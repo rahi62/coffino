@@ -1,0 +1,53 @@
+{
+  "product": "Cafino",
+  "version": "1.1.0",
+  "release_label": "Hardened",
+  "release_gate": {
+    "p1_frontend_tree": "CLOSED: only frontend/src/app; no next/font; alias preflight; CI production build",
+    "p1_migrations": "CLOSED: committed 0001/0002/0003 baseline graph for every concrete model app; drift check only",
+    "p1_tenant_isolation": "CLOSED: explicit User.business + operational Branch invariant + secure-by-default scoping + purchase boundary",
+    "p2_core_views": "CLOSED: thin core/views.py; API split into shared/public/operations and five domain ViewSet modules",
+    "p2_public_errors": "CLOSED: unexpected public errors logged internally and returned as stable generic errors",
+    "p2_release_validation": "CI is runtime authority: PostgreSQL migrate/tests + Next production build"
+  },
+  "security_invariants": [
+    "Only Django superusers are platform-global.",
+    "Every non-superuser belongs to a Business.",
+    "Operational roles require a Branch.",
+    "Unknown BaseVS models fail closed for tenant users.",
+    "Sensitive BaseVS resources require explicit read permission.",
+    "Generic hard delete is denied by default.",
+    "Direct Payment/Refund/StockMovement/PurchaseItem/SupplierPayment/CashMovement mutation is service-controlled.",
+    "Purchase branch == supplier branch == inventory item branch.",
+    "Cross-business stock transfer is rejected.",
+    "Public unexpected exceptions are not returned verbatim."
+  ],
+  "migration_strategy": [
+    "0001_initial: tables/scalars",
+    "0002_relations: deferred relations to break app cycles",
+    "0003_constraints: unique/check constraints",
+    "setup/release run makemigrations --check --dry-run, never generate schema"
+  ],
+  "ci": [
+    "PostgreSQL 17 service",
+    "Django check",
+    "migration drift check",
+    "migrate",
+    "full Django tests including PostgreSQL concurrency",
+    "Next.js production build",
+    "Electron JS syntax",
+    "static release gate"
+  ],
+  "artifact_environment_limitations": [
+    "Full Django runtime tests were not executed in the artifact assembly environment because Django/dependencies are not installed and package index access is unavailable.",
+    "Next production build was not executed in the artifact assembly environment because the internal npm gateway cannot resolve all dependencies.",
+    "Both are mandatory CI/release-script gates in a connected environment."
+  ],
+  "external_runtime_boundaries": [
+    "Bank POS/card reader requires selected vendor SDK/protocol.",
+    "Physical pager requires selected hardware protocol.",
+    "Live SMS requires provider credentials.",
+    "Live PSP requires merchant credentials and provider refund capability/configuration.",
+    "Production DNS/TLS/secrets are deployment inputs."
+  ]
+}

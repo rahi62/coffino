@@ -1,0 +1,48 @@
+{
+  "name": "cafino-electron",
+  "version": "1.1.0",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "electron": "37.2.6"
+  },
+  "devDependencies": {
+    "electron-builder": "25.1.8"
+  },
+  "description": "Cafino Local Hospitality Management",
+  "build": {
+    "appId": "com.digitalafarin.cafino",
+    "productName": "Cafino",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "release-resources/backend",
+        "to": "backend"
+      },
+      {
+        "from": "release-resources/frontend",
+        "to": "frontend"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

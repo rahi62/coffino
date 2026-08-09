@@ -1,0 +1,54 @@
+{
+  "version": "v8",
+  "phase": "Customer Experience + Advanced Operations",
+  "python_files": 155,
+  "python_syntax": "passed",
+  "python_errors": [],
+  "frontend_ts_tsx_files": 44,
+  "frontend_syntax_errors": [],
+  "electron_node_check": {
+    "electron/src/main.js": {
+      "ok": true,
+      "stderr": ""
+    },
+    "electron/src/preload.js": {
+      "ok": true,
+      "stderr": ""
+    }
+  },
+  "new_backend_apps": [
+    "reservations",
+    "loyalty",
+    "notifications",
+    "online_ordering"
+  ],
+  "capabilities": [
+    "Item-level Split Bill with exact quantity allocation and per-split tender settlement",
+    "Deferred-payment dine-in orders for pay-after-service flows",
+    "InventoryLot + expiry + FEFO consumption across sale/production/waste/transfer",
+    "Actual FEFO lot cost snapshot on OrderItem COGS",
+    "Reservation overlap validation and seating into TableSession",
+    "Loyalty points ledger and real customer wallet debit/refund",
+    "Encrypted SMS provider secret, persistent notification queue, retry/backoff",
+    "Electron automatic local notification queue worker",
+    "Public QR/table menu and online order status polling",
+    "PAY_AT_COUNTER and held ONLINE payment-intent workflow",
+    "Public backend-driven tax/service-charge quote before online order submission",
+    "Public endpoint throttling and idempotent online order creation"
+  ],
+  "runtime_limitations": [
+    "Django dependencies are unavailable in the artifact-build environment, so migrations and Django TestCase execution were not run here.",
+    "Full Next.js build requires npm install/node_modules; TS/TSX syntax transpilation passed.",
+    "ONLINE mode exposes a provider-neutral pending Payment and confirmation service; a real PSP adapter/webhook is intentionally not fabricated.",
+    "SMS is a Generic HTTP adapter; provider-specific payload/auth may require a small adapter.",
+    "Lot-tracked aggregate physical count variances are intentionally rejected until a lot-level count workflow is added.",
+    "Cloud/SaaS notification processing needs a scheduler/Celery/cron; Electron Local runs its own minute worker."
+  ],
+  "demo": {
+    "admin": "admin / admin1234",
+    "manager_pin": "4321",
+    "cashier": "cashier / cashier1234",
+    "discount_code": "VIP10",
+    "loyalty_customer": "09121111111"
+  }
+}

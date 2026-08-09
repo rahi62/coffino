@@ -1,0 +1,41 @@
+{
+  "version": "v7",
+  "phase": "Inventory Control + Multi-Branch Operations + Advanced Checkout",
+  "python_files": 123,
+  "python_syntax": "passed",
+  "python_syntax_errors": [],
+  "electron_node_check": {
+    "electron/src/main.js": {
+      "ok": true,
+      "stderr": ""
+    },
+    "electron/src/preload.js": {
+      "ok": true,
+      "stderr": ""
+    }
+  },
+  "frontend_ts_tsx_files": 37,
+  "frontend_syntax_check": "global TypeScript transpileModule syntax check",
+  "frontend_syntax_errors": [],
+  "capabilities": [
+    "Physical inventory count and variance ledger",
+    "Atomic inter-branch stock transfers",
+    "Production formulas and production batches",
+    "Finished-goods inventory consumption",
+    "Tax and service charge snapshots",
+    "Mixed payment and equal split",
+    "Multi-payment refund allocation",
+    "Idempotent checkout and branch-locked order numbering",
+    "OS-driver receipt and kitchen printing through Electron",
+    "PrintJob history",
+    "Management KPI dashboard",
+    "Tax-safe management revenue recognition",
+    "Business/branch scoping hardening"
+  ],
+  "runtime_limitations": [
+    "Django dependencies are not installed in the artifact-build environment, so Django migrations/tests were not executed here.",
+    "Full Next.js build requires npm install/node_modules.",
+    "Raw ESC/POS/vendor SDK integrations remain hardware adapters.",
+    "Item-level split bill and lot-level FEFO are not yet implemented."
+  ]
+}

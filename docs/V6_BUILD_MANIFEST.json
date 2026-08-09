@@ -1,0 +1,53 @@
+{
+  "version": "v6",
+  "phase": "Operational Control",
+  "python_files": 105,
+  "python_syntax": "passed",
+  "new_capabilities": [
+    "Permission Matrix UI with per-user allow/deny overrides",
+    "Manager PIN hashed credential and 120-second signed override token",
+    "Pre-payment manual discount override",
+    "Discount Rule Engine (auto/code, order/category/product, percent/fixed, cap, dates, weekdays, priority)",
+    "Staff scheduling and attendance clock-in/clock-out",
+    "Waste ledger with inventory decrement and audit",
+    "Historical OrderItem COGS snapshot",
+    "Food Cost and waste reporting",
+    "Multi-branch management dashboard",
+    "Permission-aware navigation",
+    "CashMovement-ledger-based daily closing expected cash"
+  ],
+  "demo": {
+    "admin": "admin / admin1234",
+    "manager_pin": "4321",
+    "cashier": "cashier / cashier1234",
+    "discount_code": "VIP10"
+  },
+  "frontend_pages": [
+    "approvals/page.tsx",
+    "audit/page.tsx",
+    "branches-dashboard/page.tsx",
+    "cashier/page.tsx",
+    "daily-close/page.tsx",
+    "discounts/page.tsx",
+    "expenses/page.tsx",
+    "inventory/page.tsx",
+    "kitchen/page.tsx",
+    "local-tools/page.tsx",
+    "login/page.tsx",
+    "orders/page.tsx",
+    "page.tsx",
+    "permissions/page.tsx",
+    "pos/page.tsx",
+    "products/page.tsx",
+    "purchasing/page.tsx",
+    "recipes/page.tsx",
+    "reports/page.tsx",
+    "sales-analytics/page.tsx",
+    "suppliers/page.tsx",
+    "tables/page.tsx",
+    "takeaway/page.tsx",
+    "waste/page.tsx",
+    "workforce/page.tsx"
+  ],
+  "runtime_note": "Django/React dependencies are not installed in the artifact-build environment; Python syntax passed and TypeScript parsing was checked with global tsc, but full framework build/test requires npm install and pip install."
+}

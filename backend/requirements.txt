@@ -1,0 +1,16 @@
+Django>=5.1,<5.3
+djangorestframework>=3.15,<3.17
+django-cors-headers>=4.4,<5
+django-filter>=24.3
+drf-spectacular>=0.27
+python-dotenv>=1.0
+
+qrcode>=7.4
+cryptography>=42
+
+djangorestframework-simplejwt>=5.3,<6
+dj-database-url>=2.2,<3
+psycopg[binary]>=3.2,<4
+gunicorn>=23,<24
+whitenoise>=6.8,<7
+pywebpush>=2.0,<3

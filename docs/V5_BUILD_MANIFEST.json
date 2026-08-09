@@ -1,0 +1,14 @@
+{
+  "version": "v5",
+  "phase": "Audit, permissions, approvals, daily close, sales analytics",
+  "backend_python_files": 90,
+  "syntax_check": "passed",
+  "features": [
+    "AuditLog",
+    "Role permissions",
+    "Discount/Void approval",
+    "Daily financial closing",
+    "Item/category/hour reports",
+    "Cashier performance"
+  ]
+}

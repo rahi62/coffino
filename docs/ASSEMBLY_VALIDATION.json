@@ -1,0 +1,29 @@
+{
+  "version": "1.1.0",
+  "assembly_validation": {
+    "python_ast": {
+      "status": "PASS",
+      "files": 296
+    },
+    "committed_migrations": {
+      "status": "PASS_STATIC",
+      "migration_files": 78,
+      "concrete_models": 80
+    },
+    "typescript_transpile_syntax": {
+      "status": "PASS",
+      "files": 49
+    },
+    "electron_main_node_check": "PASS",
+    "electron_preload_node_check": "PASS",
+    "static_release_gate": "PASS",
+    "frontend_app_router": "frontend/src/app only",
+    "next_font_references": 0
+  },
+  "runtime_authority": ".github/workflows/ci.yml and scripts/build-release.ps1",
+  "not_executed_in_assembly_environment": [
+    "Django runtime migration/test suite",
+    "Next.js production build"
+  ],
+  "reason": "The artifact environment cannot install all project dependencies from its package gateways. Runtime gates are mandatory in CI/release tooling."
+}
