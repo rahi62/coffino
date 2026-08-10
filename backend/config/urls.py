@@ -2,6 +2,12 @@ from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from .admin_localization import localized_text, localize_admin
+
+admin.site.site_header=localized_text('مدیریت کافینو', 'Cafino Administration')
+admin.site.site_title=localized_text('مدیریت کافینو', 'Cafino Administration')
+admin.site.index_title=localized_text('مدیریت سامانهٔ کافینو', 'Cafino Administration')
+localize_admin()
 
 urlpatterns = [
     path("admin/", admin.site.urls),

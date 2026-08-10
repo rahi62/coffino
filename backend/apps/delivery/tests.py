@@ -16,7 +16,7 @@ class DeliveryTests(TestCase):
         with self.assertRaises(ValueError): delivery_quote(self.zone,Decimal('500'))
 
     def test_courier_lifecycle(self):
-        order=Order.objects.create(branch=self.br,order_number=1,order_type='DELIVERY',subtotal=2000,grand_total=2300)
+        order=Order.objects.create(branch=self.br,order_number=1,order_type='DELIVERY',status=Order.Status.CONFIRMED,payment_status=Order.PaymentStatus.PAID,subtotal=2000,grand_total=2300)
         address=DeliveryAddress.objects.create(branch=self.br,zone=self.zone,recipient_name='A',phone='1',address='Street')
         assignment=DeliveryAssignment.objects.create(order=order,address=address,zone=self.zone,delivery_fee=300)
         courier=CourierProfile.objects.create(branch=self.br,name='Courier')

@@ -1,97 +1,206 @@
-import json,urllib.request,urllib.error
+import json
+import urllib.error
+import urllib.request
 from datetime import timedelta
-from django.db import transaction, models
-from django.utils import timezone
-from .models import Notification,SmsProviderConfig
 
-def order_phone(order):
-    if order.customer_id and order.customer.phone:return order.customer.phone
-    try:return order.takeaway_profile.customer_phone
-    except Exception:return ''
+from django.db import models, transaction
+from django.utils import timezone
+
+from .models import Notification, PagerProviderConfig, SmsProviderConfig
+
+
+def _queue_delivery(notification):
+    """Hand delivery to Celery after the surrounding order transaction commits."""
+    from .tasks import deliver_notification
+    def dispatch():
+        try:
+            deliver_notification.delay(notification.pk)
+        except Exception:
+            # The persisted notification remains pending for the worker/beat retry path.
+            pass
+    transaction.on_commit(dispatch)
+
+
+def _ready_copy(order):
+    title=f'سفارش #{order.order_number} آماده است'
+    return title, f'سفارش شما در {order.branch.name} آمادهٔ تحویل است.'
+
+
+def _configured_sms(branch):
+    try:
+        config=branch.sms_provider
+    except SmsProviderConfig.DoesNotExist:
+        return False
+    return bool(config.is_active and config.endpoint_url)
+
+
+def _configured_pager(branch):
+    try:
+        config=branch.pager_provider
+    except PagerProviderConfig.DoesNotExist:
+        return False
+    return bool(config.is_active and config.endpoint_url)
+
+
+def _create_delivery(*, order, channel, recipient, title, body, dedupe_key, configuration_ready):
+    defaults={'customer':order.customer,'recipient':recipient,'title':title,'body':body}
+    if not configuration_ready:
+        defaults.update(status=Notification.Status.CANCELLED,last_error='اتصال‌دهندهٔ این روش اعلان برای شعبه فعال و کامل نشده است.')
+    notification,created=Notification.objects.get_or_create(
+        branch=order.branch,order=order,channel=channel,event='ORDER_READY',dedupe_key=dedupe_key,defaults=defaults,
+    )
+    if created and configuration_ready:
+        _queue_delivery(notification)
+    return notification
+
 
 @transaction.atomic
 def enqueue_order_ready(order):
-    title=f'سفارش #{order.order_number} آماده است'
-    body=f'سفارش شما در {order.branch.name} آماده تحویل است.'
-    Notification.objects.get_or_create(branch=order.branch,order=order,channel=Notification.Channel.IN_APP,event='ORDER_READY',dedupe_key=f'order-ready-inapp-{order.id}',defaults={'customer':order.customer,'title':title,'body':body,'status':Notification.Status.SENT,'sent_at':timezone.now()})
-    phone=order_phone(order)
-    if phone:
-        Notification.objects.get_or_create(branch=order.branch,order=order,channel=Notification.Channel.SMS,event='ORDER_READY',dedupe_key=f'order-ready-sms-{order.id}',defaults={'customer':order.customer,'recipient':phone,'title':title,'body':body})
-    from .models import PushSubscription
-    subs=PushSubscription.objects.filter(branch=order.branch,is_active=True).filter(models.Q(order=order)|models.Q(customer=order.customer) if order.customer_id else models.Q(order=order))
-    for sub in subs:
-        Notification.objects.get_or_create(branch=order.branch,order=order,channel=Notification.Channel.PUSH,event='ORDER_READY',recipient=str(sub.id),dedupe_key=f'order-ready-push-{order.id}-{sub.id}',defaults={'customer':order.customer,'title':title,'body':body})
+    """Queue exactly one configured fulfilment notification for a takeaway order."""
+    if order.order_type!='TAKEAWAY':
+        return []
+    try:
+        profile=order.takeaway_profile
+    except Exception:
+        return []
 
-def _send_sms(n):
-    try:cfg=n.branch.sms_provider
-    except SmsProviderConfig.DoesNotExist:raise ValueError('SMS provider تنظیم نشده است')
-    if not cfg.is_active or not cfg.endpoint_url:raise ValueError('SMS provider غیرفعال است')
-    payload={cfg.phone_field:n.recipient,cfg.message_field:n.body}
-    if cfg.sender:payload[cfg.sender_field]=cfg.sender
-    headers={'Content-Type':'application/json'}
-    for k,v in (cfg.headers or {}).items():headers[str(k)]=str(v).replace('{api_key}',cfg.api_key)
-    req=urllib.request.Request(cfg.endpoint_url,data=json.dumps(payload,ensure_ascii=False).encode('utf-8'),headers=headers,method='POST')
-    with urllib.request.urlopen(req,timeout=cfg.timeout_seconds) as response:
+    title,customer_body=_ready_copy(order)
+    created=[]
+    in_app,_=Notification.objects.get_or_create(
+        branch=order.branch,order=order,channel=Notification.Channel.IN_APP,event='ORDER_READY',
+        dedupe_key=f'order-ready-inapp-{order.id}',
+        defaults={'customer':order.customer,'title':title,'body':customer_body,'status':Notification.Status.SENT,'sent_at':timezone.now()},
+    )
+    created.append(in_app)
+
+    if profile.ready_notification_method=='SMS':
+        if not profile.customer_phone:
+            return created
+        created.append(_create_delivery(
+            order=order,channel=Notification.Channel.SMS,recipient=profile.customer_phone,title=title,body=customer_body,
+            dedupe_key=f'order-ready-sms-{order.id}',configuration_ready=_configured_sms(order.branch),
+        ))
+    elif profile.ready_notification_method=='PAGER':
+        if not profile.pager_id:
+            return created
+        pager_body=f'سفارش #{order.order_number} آماده است.'
+        created.append(_create_delivery(
+            order=order,channel=Notification.Channel.PAGER,recipient=profile.pager.number,title=title,body=pager_body,
+            dedupe_key=f'order-ready-pager-{order.id}',configuration_ready=_configured_pager(order.branch),
+        ))
+    return created
+
+
+def _request_json(*, endpoint, payload, headers, timeout):
+    request=urllib.request.Request(
+        endpoint,data=json.dumps(payload,ensure_ascii=False).encode('utf-8'),headers=headers,method='POST',
+    )
+    with urllib.request.urlopen(request,timeout=timeout) as response:
         code=getattr(response,'status',200)
-        if code<200 or code>=300:raise ValueError(f'SMS HTTP {code}')
-    return True
+        if code<200 or code>=300:
+            raise ValueError(f'پاسخ نامعتبر سرویس اعلان: {code}')
 
 
-def _send_push(n):
-    from .models import PushSubscription,PushProviderConfig
-    try:sub=PushSubscription.objects.get(pk=int(n.recipient),is_active=True)
-    except (PushSubscription.DoesNotExist,ValueError):raise ValueError('Push subscription معتبر نیست')
-    try:cfg=n.branch.push_provider
-    except PushProviderConfig.DoesNotExist:raise ValueError('Push provider تنظیم نشده است')
-    if not cfg.is_active or not cfg.vapid_public_key or not cfg.get_private_key():raise ValueError('Push provider غیرفعال است')
+def _provider_headers(config):
+    headers={'Content-Type':'application/json'}
+    for key,value in (config.headers or {}).items():
+        headers[str(key)]=str(value).replace('{api_key}',config.api_key)
+    return headers
+
+
+def _send_sms(notification):
     try:
-        from pywebpush import webpush,WebPushException
-    except ImportError:raise ValueError('pywebpush نصب نشده است')
-    payload=json.dumps({'title':n.title,'body':n.body,'event':n.event,'order_id':n.order_id},ensure_ascii=False)
+        config=notification.branch.sms_provider
+    except SmsProviderConfig.DoesNotExist:
+        raise ValueError('اتصال‌دهندهٔ پیامک تنظیم نشده است.')
+    if not config.is_active or not config.endpoint_url:
+        raise ValueError('اتصال‌دهندهٔ پیامک فعال نیست.')
+    payload={config.phone_field:notification.recipient,config.message_field:notification.body}
+    if config.sender:
+        payload[config.sender_field]=config.sender
+    _request_json(endpoint=config.endpoint_url,payload=payload,headers=_provider_headers(config),timeout=config.timeout_seconds)
+
+
+def _send_pager(notification):
     try:
-        webpush(subscription_info={'endpoint':sub.endpoint,'keys':{'p256dh':sub.p256dh,'auth':sub.auth}},data=payload,vapid_private_key=cfg.get_private_key(),vapid_claims={'sub':cfg.subject})
-    except Exception as e:
-        if '410' in str(e) or '404' in str(e):
-            sub.is_active=False;sub.save(update_fields=['is_active','updated_at'])
+        config=notification.branch.pager_provider
+    except PagerProviderConfig.DoesNotExist:
+        raise ValueError('اتصال‌دهندهٔ پیجر تنظیم نشده است.')
+    if not config.is_active or not config.endpoint_url:
+        raise ValueError('اتصال‌دهندهٔ پیجر فعال نیست.')
+    _request_json(
+        endpoint=config.endpoint_url,
+        payload={config.pager_field:notification.recipient,config.message_field:notification.body},
+        headers=_provider_headers(config),timeout=config.timeout_seconds,
+    )
+
+
+def _send_push(notification):
+    from .models import PushProviderConfig, PushSubscription
+    try:
+        subscription=PushSubscription.objects.get(pk=int(notification.recipient),is_active=True)
+    except (PushSubscription.DoesNotExist,ValueError):
+        raise ValueError('اشتراک اعلان معتبر نیست.')
+    try:
+        config=notification.branch.push_provider
+    except PushProviderConfig.DoesNotExist:
+        raise ValueError('اتصال‌دهندهٔ اعلان مرورگر تنظیم نشده است.')
+    if not config.is_active or not config.vapid_public_key or not config.get_private_key():
+        raise ValueError('اتصال‌دهندهٔ اعلان مرورگر فعال نیست.')
+    try:
+        from pywebpush import webpush
+    except ImportError:
+        raise ValueError('بستهٔ اعلان مرورگر نصب نشده است.')
+    payload=json.dumps({'title':notification.title,'body':notification.body,'event':notification.event,'order_id':notification.order_id},ensure_ascii=False)
+    try:
+        webpush(subscription_info={'endpoint':subscription.endpoint,'keys':{'p256dh':subscription.p256dh,'auth':subscription.auth}},data=payload,vapid_private_key=config.get_private_key(),vapid_claims={'sub':config.subject})
+    except Exception as error:
+        if '410' in str(error) or '404' in str(error):
+            subscription.is_active=False
+            subscription.save(update_fields=['is_active','updated_at'])
         raise
+
 
 @transaction.atomic
 def process_notification(notification):
-    n=Notification.objects.select_for_update().select_related('branch').get(pk=notification.pk)
-    if n.status==Notification.Status.SENT:return n
-    n.status=Notification.Status.PROCESSING;n.attempts+=1;n.save(update_fields=['status','attempts','updated_at'])
+    n=Notification.objects.select_for_update().select_related('branch','order').get(pk=notification.pk)
+    if n.status in [Notification.Status.SENT,Notification.Status.CANCELLED]:
+        return n
+    n.status=Notification.Status.PROCESSING
+    n.attempts+=1
+    n.save(update_fields=['status','attempts','updated_at'])
     try:
-        if n.channel==Notification.Channel.IN_APP:
-            pass
-        elif n.channel==Notification.Channel.SMS:
+        if n.channel==Notification.Channel.SMS:
             _send_sms(n)
+        elif n.channel==Notification.Channel.PAGER:
+            _send_pager(n)
         elif n.channel==Notification.Channel.PUSH:
             _send_push(n)
-        n.status=Notification.Status.SENT;n.sent_at=timezone.now();n.last_error='';n.next_attempt_at=None
+        n.status=Notification.Status.SENT
+        n.sent_at=timezone.now()
+        n.last_error=''
+        n.next_attempt_at=None
         if n.event=='ORDER_READY' and n.order_id:
             try:
-                profile=n.order.takeaway_profile;profile.notified_at=n.sent_at;profile.save(update_fields=['notified_at','updated_at'])
-            except Exception:pass
-    except Exception as e:
-        n.status=Notification.Status.FAILED;n.last_error=str(e)[:2000]
-        delay=min(60,2**min(n.attempts,6));n.next_attempt_at=timezone.now()+timedelta(minutes=delay)
+                profile=n.order.takeaway_profile
+                profile.notified_at=n.sent_at
+                profile.save(update_fields=['notified_at','updated_at'])
+            except Exception:
+                pass
+    except Exception:
+        n.status=Notification.Status.FAILED
+        n.last_error='ارسال اعلان ناموفق بود. اتصال‌دهنده و ارتباط شبکه را بررسی کنید.'
+        n.next_attempt_at=timezone.now()+timedelta(minutes=min(60,2**min(n.attempts,6)))
     n.save(update_fields=['status','sent_at','last_error','next_attempt_at','updated_at'])
     return n
 
+
 def process_pending(branch=None,business=None,limit=50,allow_global=False):
-    qs=Notification.objects.filter(
-        status__in=[Notification.Status.PENDING,Notification.Status.FAILED]
-    ).filter(
-        models.Q(next_attempt_at__isnull=True)|models.Q(next_attempt_at__lte=timezone.now())
-    ).order_by('created_at')
+    queryset=Notification.objects.filter(status__in=[Notification.Status.PENDING,Notification.Status.FAILED]).filter(models.Q(next_attempt_at__isnull=True)|models.Q(next_attempt_at__lte=timezone.now())).order_by('created_at')
     if branch is not None:
-        qs=qs.filter(branch=branch)
+        queryset=queryset.filter(branch=branch)
     elif business is not None:
-        qs=qs.filter(branch__business=business)
+        queryset=queryset.filter(branch__business=business)
     elif not allow_global:
-        # Global processing is intentionally reserved for internal worker code.
-        qs=qs.none()
-    done=[]
-    for n in qs[:limit]:
-        done.append(process_notification(n))
-    return done
+        queryset=queryset.none()
+    return [process_notification(notification) for notification in queryset[:limit]]

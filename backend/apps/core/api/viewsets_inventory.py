@@ -7,6 +7,19 @@ class InventoryItemVS(BaseVS):
     queryset=InventoryItem.objects.all()
     serializer_class=InventoryItemSerializer
 
+class IngredientCategoryVS(BaseVS):
+    cafino_read_permission=('inventory.view', 'inventory.manage', 'purchasing.view', 'purchasing.manage')
+    cafino_write_permission='inventory.manage'
+    cafino_allow_destroy=True
+    queryset=IngredientCategory.objects.all()
+    serializer_class=IngredientCategorySerializer
+
+    def destroy(self,request,*args,**kwargs):
+        category=self.get_object()
+        if category.materials.exists():
+            return Response({'detail':'این دسته به مادهٔ اولیه متصل است؛ ابتدا مواد را به دستهٔ دیگری منتقل کنید.'},status=400)
+        return super().destroy(request,*args,**kwargs)
+
 class StockMovementVS(BaseVS): queryset=StockMovement.objects.select_related("item").all(); serializer_class=StockMovementSerializer; cafino_read_permission=('inventory.view', 'food_cost.view')
 
 class RecipeItemVS(BaseVS):
@@ -14,6 +27,56 @@ class RecipeItemVS(BaseVS):
     cafino_write_permission='inventory.manage'
     queryset=RecipeItem.objects.select_related("product","inventory_item").all()
     serializer_class=RecipeItemSerializer
+
+    @action(detail=False,methods=['put'],url_path='save-recipe')
+    @transaction.atomic
+    def save_recipe(self,request):
+        """Create or update every material of a product recipe as one operation."""
+        self._assert_write_permission()
+        serializer=RecipeSaveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        product=serializer.validated_data['product']
+        ingredients=serializer.validated_data['ingredients']
+
+        # The serializer checks consistency; these checks enforce the caller's tenant and branch scope.
+        self._assert_write_scope({'product':product})
+        assert_branch_access(request.user,product.branch,cross_permission=self._cross_permission('inventory.recipeitem'))
+
+        product=Product.objects.select_for_update().select_related('branch').get(pk=product.pk)
+        existing_rows=list(RecipeItem.objects.select_for_update().filter(product=product))
+        existing_by_material={}
+        duplicate_rows=[]
+        for row in existing_rows:
+            if row.inventory_item_id in existing_by_material:
+                duplicate_rows.append(row.pk)
+            else:
+                existing_by_material[row.inventory_item_id]=row
+        if duplicate_rows:
+            RecipeItem.objects.filter(pk__in=duplicate_rows).delete()
+
+        changed=False
+        for ingredient in ingredients:
+            item=ingredient['inventory_item']
+            quantity=ingredient['quantity']
+            row=existing_by_material.pop(item.id,None)
+            if row is None:
+                RecipeItem.objects.create(product=product,inventory_item=item,quantity=quantity)
+                changed=True
+            elif row.quantity!=quantity:
+                row.quantity=quantity
+                row.save(update_fields=['quantity','updated_at'])
+                changed=True
+        if existing_by_material:
+            RecipeItem.objects.filter(pk__in=[row.pk for row in existing_by_material.values()]).delete()
+            changed=True
+
+        if changed or duplicate_rows:
+            log_action(
+                actor=request.user,branch=product.branch,action='CONFIG_UPDATED',entity=product,
+                metadata={'model':'inventory.recipeitem','source':'recipe-editor','ingredient_count':len(ingredients)},request=request,
+            )
+        rows=RecipeItem.objects.select_related('product','inventory_item').filter(product=product).order_by('id')
+        return Response(RecipeItemSerializer(rows,many=True).data)
 
 class WasteRecordVS(viewsets.ReadOnlyModelViewSet):
     queryset=WasteRecord.objects.select_related('item','created_by','branch').all()
@@ -152,4 +215,3 @@ class LotInventoryCountVS(viewsets.ReadOnlyModelViewSet):
         except ValueError as e:
             return Response({'detail':str(e)},status=409)
         return Response(self.get_serializer(x).data)
-

@@ -30,7 +30,18 @@ def checkout(request):
         rows.append({"product":product,"quantity":raw.get("quantity",1),"notes":raw.get("notes","")})
 
     table_session=None
-    if request.data.get("table_session"):
+    if request.data.get("table"):
+        table=get_object_or_404(
+            Table.objects.select_related("hall__branch"),
+            pk=request.data["table"],hall__branch=branch
+        )
+        try:
+            table_session=get_or_open_table_session(
+                table=table,branch=branch,user=request.user
+            )
+        except ValueError as e:
+            return Response({"detail":str(e)},status=409)
+    elif request.data.get("table_session"):
         table_session=get_object_or_404(
             TableSession.objects.select_related("table__hall__branch"),
             pk=request.data["table_session"],is_open=True,table__hall__branch=branch
@@ -87,6 +98,18 @@ def checkout(request):
         except ValueError as e:
             return Response({"detail":str(e)},status=400)
 
+    ready_notification_method=request.data.get('ready_notification_method','SMS')
+    if ready_notification_method not in dict(TakeawayProfile.ReadyNotificationMethod.choices):
+        return Response({'detail':'روش اطلاع‌رسانی بیرون‌بر معتبر نیست'},status=400)
+    pager=None
+    if request.data.get('order_type','TAKEAWAY')=='TAKEAWAY' and ready_notification_method=='SMS' and not request.data.get('customer_phone'):
+        return Response({'detail':'برای اطلاع‌رسانی پیامکی، شماره همراه مشتری را وارد کنید.'},status=400)
+    if request.data.get('order_type','TAKEAWAY')=='TAKEAWAY' and ready_notification_method=='PAGER':
+        pager=get_object_or_404(
+            PagerDevice.objects.select_for_update().select_related('branch'),
+            pk=request.data.get('pager_id'),branch=branch,status=PagerDevice.Status.AVAILABLE,
+        )
+
     try:
         order=checkout_order(
             branch=branch,items=rows,order_type=request.data.get("order_type","TAKEAWAY"),
@@ -102,14 +125,21 @@ def checkout(request):
         return Response({"detail":str(e)},status=400)
 
     if order.order_type=="TAKEAWAY":
-        TakeawayProfile.objects.get_or_create(
+        profile,_=TakeawayProfile.objects.get_or_create(
             order=order,
             defaults={
                 "pickup_number":str(order.order_number),
                 "customer_name":request.data.get("customer_name",""),
-                "customer_phone":request.data.get("customer_phone","")
+                "customer_phone":request.data.get("customer_phone","") ,
+                "ready_notification_method":ready_notification_method,
             }
         )
+        if pager and profile.pager_id!=pager.id:
+            profile.pager=pager
+            profile.ready_notification_method=ready_notification_method
+            profile.save(update_fields=['pager','ready_notification_method','updated_at'])
+            pager.status=PagerDevice.Status.ASSIGNED
+            pager.save(update_fields=['status','updated_at'])
     if order.order_type=="DELIVERY" and delivery_address:
         from apps.delivery.services import create_delivery_assignment
         create_delivery_assignment(order=order,address=delivery_address,fee=delivery_fee)
@@ -198,6 +228,98 @@ def sales_reports(request):
     except Exception:
         return Response({'detail':'شعبه گزارش معتبر یا مجاز نیست'},status=403)
     return Response(sales_analytics(branch,request.GET.get('start'),request.GET.get('end')))
+
+@api_view(['POST'])
+@transaction.atomic
+def settings_user_create(request):
+    if not has_perm(request.user,'permissions.manage'):
+        return Response({'detail':'دسترسی مدیریت کاربران ندارید'},status=403)
+    business=tenant_business(request.user)
+    if request.user.is_superuser and request.data.get('business'):
+        business=get_object_or_404(Business,pk=request.data.get('business'))
+    if business is None:
+        return Response({'detail':'کسب‌وکار کاربر مشخص نیست'},status=400)
+    username=str(request.data.get('username') or '').strip()
+    password=str(request.data.get('password') or '')
+    role=request.data.get('role') or User.Role.CASHIER
+    if not username or len(username)<3:
+        return Response({'detail':'نام کاربری حداقل سه کاراکتر باشد'},status=400)
+    if len(password)<8:
+        return Response({'detail':'رمز عبور حداقل هشت کاراکتر باشد'},status=400)
+    if role not in dict(User.Role.choices):
+        return Response({'detail':'نقش نامعتبر است'},status=400)
+    if not request.user.is_superuser and request.user.role!=User.Role.OWNER and role==User.Role.OWNER:
+        return Response({'detail':'فقط مالک می‌تواند کاربر با نقش مالک بسازد'},status=403)
+    if User.objects.filter(username=username).exists():
+        return Response({'detail':'این نام کاربری قبلاً استفاده شده است'},status=409)
+    branch=None
+    if request.data.get('branch'):
+        branch=get_object_or_404(Branch.objects.select_related('business'),pk=request.data.get('branch'))
+        if branch.business_id!=business.id:
+            return Response({'detail':'شعبه متعلق به کسب‌وکار نیست'},status=400)
+        if not request.user.is_superuser:
+            assert_branch_access(request.user,branch)
+    if role in User.OPERATIONAL_ROLES and branch is None:
+        return Response({'detail':'نقش عملیاتی باید شعبه داشته باشد'},status=400)
+    user=User(
+        username=username,first_name=str(request.data.get('first_name') or '').strip(),
+        last_name=str(request.data.get('last_name') or '').strip(),email=str(request.data.get('email') or '').strip(),
+        role=role,business=business,branch=branch,is_active=True
+    )
+    user.set_password(password)
+    user.save()
+    log_action(
+        actor=request.user,branch=branch,action='TEAM_USER_CREATED',entity=user,
+        after={'username':user.username,'role':user.role,'business':business.id,'branch':branch.id if branch else None},request=request
+    )
+    return Response(UserManagementSerializer(user).data,status=201)
+
+
+@api_view(['POST'])
+@transaction.atomic
+def settings_user_password(request,user_id):
+    if not has_perm(request.user,'permissions.manage'):
+        return Response({'detail':'دسترسی مدیریت کاربران ندارید'},status=403)
+    target=get_object_or_404(User.objects.select_related('business','branch'),pk=user_id)
+    if not request.user.is_superuser:
+        business=tenant_business(request.user)
+        if business is None or target.business_id!=business.id:
+            return Response({'detail':'دسترسی به این کاربر ندارید'},status=403)
+        if request.user.role!=User.Role.OWNER and target.role==User.Role.OWNER:
+            return Response({'detail':'فقط مالک می‌تواند رمز مالک را تغییر دهد'},status=403)
+    password=str(request.data.get('password') or '')
+    if len(password)<8:
+        return Response({'detail':'رمز عبور حداقل هشت کاراکتر باشد'},status=400)
+    target.set_password(password)
+    target.save(update_fields=['password'])
+    log_action(actor=request.user,branch=target.branch,action='TEAM_PASSWORD_RESET',entity=target,request=request)
+    return Response({'ok':True})
+
+@api_view(['GET'])
+def settings_context(request):
+    if not has_perm(request.user,'settings.manage'):
+        return Response({'detail':'دسترسی به تنظیمات ندارید'},status=403)
+    if request.user.is_superuser:
+        business=(request.user.business if request.user.business_id else None)
+        if request.query_params.get('business'):
+            business=get_object_or_404(Business,pk=request.query_params.get('business'))
+    else:
+        business=tenant_business(request.user)
+    if business is None:
+        return Response({'detail':'کسب‌وکار برای تنظیمات مشخص نیست'},status=400)
+    branches=Branch.objects.filter(business=business).order_by('name')
+    if request.user.branch_id and not has_perm(request.user,'branches.dashboard'):
+        branches=branches.filter(pk=request.user.branch_id)
+    modules=BusinessModule.objects.filter(business=business).order_by('key')
+    permissions_map={code:has_perm(request.user,code) for code in ALL_PERMISSION_CODES}
+    return Response({
+        'business':BusinessSerializer(business).data,
+        'branches':BranchSerializer(branches,many=True).data,
+        'modules':BusinessModuleSerializer(modules,many=True).data,
+        'permissions':permissions_map,
+        'current_branch':request.user.branch_id,
+        'role':request.user.role,
+    })
 
 @api_view(['GET'])
 def permissions_me(request):
@@ -745,4 +867,3 @@ def checkout_preview(request):
         'discount_rule':rule.name if rule else None,
         'requires_manager':requires_manager,**fiscal
     })
-

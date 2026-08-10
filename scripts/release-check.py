@@ -141,7 +141,7 @@ if root_app.exists():
 frontend_sources=[p for p in (frontend/'src').rglob('*') if p.is_file() and p.suffix in {'.ts','.tsx','.js','.jsx','.css'}]
 for path in frontend_sources:
     text=read(path)
-    if 'next/font' in text:
+    if re.search(r'''(?:from\s+|import\s*\(\s*|require\(\s*)["']next/font(?:/google)?["']''', text):
         fail(f'Network/font dependency forbidden for local-first build: {path.relative_to(ROOT)}')
     if 'CoffeeSan' in text or 'Coffee San' in text:
         fail(f'Stale CoffeeSan identity found: {path.relative_to(ROOT)}')

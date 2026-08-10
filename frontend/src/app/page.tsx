@@ -66,7 +66,7 @@ export default function Dashboard(){
       <div className="card p-5">
         <h2 className="font-black text-xl">کنترل دسترسی</h2>
         <p className="leading-8 text-[#6f6259] mt-3">
-          Dashboard و مسیرهای سریع بر اساس Permission Matrix کاربر نمایش داده می‌شوند؛ داده مالی و انبار برای نقش‌های بدون مجوز ارسال یا نمایش داده نمی‌شود.
+          Dashboard و مسیرهای سریع بر اساس جدول دسترسی‌ها کاربر نمایش داده می‌شوند؛ داده مالی و انبار برای نقش‌های بدون مجوز ارسال یا نمایش داده نمی‌شود.
         </p>
       </div>
     </div>

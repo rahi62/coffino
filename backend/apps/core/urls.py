@@ -10,6 +10,7 @@ r.register("halls",HallVS);r.register("tables",TableVS);r.register("table-sessio
 r.register("orders",OrderVS);r.register("payments",PaymentVS);r.register("refunds",RefundVS)
 r.register("stations",StationVS);r.register("kitchen-tickets",KitchenTicketVS)
 r.register("inventory-items",InventoryItemVS);r.register("stock-movements",StockMovementVS);r.register("recipe-items",RecipeItemVS)
+r.register("ingredient-categories",IngredientCategoryVS,basename="ingredient-category")
 r.register("pagers",PagerVS);r.register("takeaway-profiles",TakeawayProfileVS)
 r.register("cash-registers",CashRegisterVS);r.register("cash-shifts",CashShiftVS);r.register("cash-movements",CashMovementVS)
 r.register("suppliers",SupplierVS);r.register("purchase-invoices",PurchaseInvoiceVS);r.register("purchase-items",PurchaseItemVS);r.register("supplier-payments",SupplierPaymentVS)
@@ -34,6 +35,7 @@ r.register("loyalty-accounts",CustomerLoyaltyAccountVS,basename="loyalty-account
 r.register("wallet-accounts",WalletAccountVS,basename="wallet-account")
 r.register("notifications",NotificationVS,basename="notification")
 r.register("sms-provider",SmsProviderConfigVS,basename="sms-provider")
+r.register("pager-provider",PagerProviderConfigVS,basename="pager-provider")
 r.register("online-menu-settings",OnlineMenuSettingsVS,basename="online-menu-setting")
 r.register("table-qr-tokens",TableQrTokenVS,basename="table-qr-token")
 r.register("online-orders",OnlineOrderVS,basename="online-order")
@@ -56,7 +58,7 @@ urlpatterns=[
     path("purchases/create/",create_multi_purchase),path("reports/financial/",financial_report),
     path("approvals/request/",request_approval),path("daily-close/",daily_close),
     path("reports/sales/",sales_reports),path("reports/food-cost/",food_cost),path("reports/kpi/",kpi_report),
-    path("permissions/me/",permissions_me),path("permissions/matrix/",permission_matrix),
+    path("settings/context/",settings_context),path("settings/users/create/",settings_user_create),path("settings/users/<int:user_id>/password/",settings_user_password),path("permissions/me/",permissions_me),path("permissions/matrix/",permission_matrix),
     path("manager-pin/set/",manager_pin_set),path("manager-override/",manager_override),
     path("attendance/clock-in/",attendance_clock_in),path("attendance/clock-out/",attendance_clock_out),
     path("waste/create/",waste_create),path("dashboard/branches/",branches_dashboard),

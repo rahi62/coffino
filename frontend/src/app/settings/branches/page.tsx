@@ -1,0 +1,27 @@
+"use client";
+import {useEffect,useState} from "react";
+import {api} from "@/lib/api";
+import {useSettings} from "@/components/settings/settings-context";
+
+export default function BranchSettings(){
+ const {data,selectedBranch,selectedBranchId,setSelectedBranchId,refresh}=useSettings();
+ const [form,setForm]=useState<any>(null),[regs,setRegs]=useState<any[]>([]),[msg,setMsg]=useState("");
+ const [newBranch,setNewBranch]=useState({name:"",address:"",phone:""}),[newReg,setNewReg]=useState("");
+ const loadRegs=()=>api<any[]>("/cash-registers/").then(setRegs);
+ useEffect(()=>{loadRegs().catch(()=>{})},[]);
+ useEffect(()=>{setForm(selectedBranch?{...selectedBranch}:null)},[selectedBranch]);
+ if(!data)return null;
+
+ const createBranch=async()=>{if(!newBranch.name.trim())return;try{const x:any=await api("/branches/",{method:"POST",body:JSON.stringify({...newBranch,business:data.business.id,is_active:true})});setNewBranch({name:"",address:"",phone:""});await refresh();setSelectedBranchId(x.id);setMsg("✓ شعبه جدید ساخته شد")}catch(e:any){setMsg(e.message)}};
+ const save=async()=>{if(!selectedBranch||!form)return;try{await api(`/branches/${selectedBranch.id}/`,{method:"PATCH",body:JSON.stringify({name:form.name,address:form.address,phone:form.phone,is_active:form.is_active})});setMsg("✓ اطلاعات شعبه ذخیره شد");await refresh()}catch(e:any){setMsg(e.message)}};
+ const createRegister=async()=>{if(!selectedBranch||!newReg.trim())return;try{await api("/cash-registers/",{method:"POST",body:JSON.stringify({branch:selectedBranch.id,name:newReg,is_active:true})});setNewReg("");await loadRegs();setMsg("✓ صندوق تعریف شد")}catch(e:any){setMsg(e.message)}};
+ const toggleReg=async(r:any)=>{try{await api(`/cash-registers/${r.id}/`,{method:"PATCH",body:JSON.stringify({is_active:!r.is_active})});loadRegs()}catch(e:any){setMsg(e.message)}};
+ const branchRegs=selectedBranch?regs.filter(x=>x.branch===selectedBranch.id):[];
+
+ return <div><h2 className="text-3xl font-black mb-1">شعب و صندوق‌ها</h2><p className="text-[#8d8178] mb-5">پروفایل شعبه و تجهیزاتی که برای عملیات فروش تعریف می‌شوند.</p>{msg&&<div className="card p-3 mb-4">{msg}</div>}
+ <div className="grid 2xl:grid-cols-[1fr_360px] gap-5"><div className="space-y-5">
+ {selectedBranch&&form?<><div className="card p-5"><h3 className="font-black text-lg mb-4">{selectedBranch.name}</h3><div className="grid md:grid-cols-2 gap-3"><label className="text-sm">نام شعبه<input className="border rounded-xl p-2 w-full mt-1" value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})}/></label><label className="text-sm">تلفن<input className="border rounded-xl p-2 w-full mt-1" value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})}/></label><label className="text-sm md:col-span-2">آدرس<textarea className="border rounded-xl p-2 w-full mt-1" value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})}/></label><label className="border rounded-xl p-3 flex gap-2"><input type="checkbox" checked={!!form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/> شعبه فعال</label></div><button className="btn btn-primary mt-4" onClick={save}>ذخیره شعبه</button></div>
+ <div className="card p-5"><div className="flex justify-between"><div><h3 className="font-black text-lg">صندوق‌های فروش</h3><p className="text-sm text-[#8d8178]">تعریف صندوق تنظیمات است؛ باز و بسته کردن شیفت همچنان در صفحه صندوق انجام می‌شود.</p></div><a href="/cashier" className="btn">عملیات صندوق</a></div><div className="flex gap-2 mt-4"><input className="border rounded-xl p-2 flex-1" placeholder="مثلاً صندوق ورودی" value={newReg} onChange={e=>setNewReg(e.target.value)}/><button className="btn btn-primary" onClick={createRegister}>افزودن</button></div><div className="mt-3">{branchRegs.map(r=><div className="border-t py-3 flex justify-between items-center" key={r.id}><div><b>{r.name}</b><div className="text-xs text-[#8d8178]">#{r.id}</div></div><button className="btn" onClick={()=>toggleReg(r)}>{r.is_active?"غیرفعال کردن":"فعال کردن"}</button></div>)}</div></div></>:<div className="card p-6"><b>هنوز شعبه‌ای تعریف نشده است.</b><p className="text-sm text-[#8d8178] mt-2">فرم سمت چپ/پایین را تکمیل کن تا اولین شعبه ساخته شود.</p></div>}
+ </div><aside className="card p-5 h-fit"><h3 className="font-black text-lg mb-3">افزودن شعبه</h3><div className="space-y-2"><input className="border rounded-xl p-2 w-full" placeholder="نام شعبه" value={newBranch.name} onChange={e=>setNewBranch({...newBranch,name:e.target.value})}/><input className="border rounded-xl p-2 w-full" placeholder="تلفن" value={newBranch.phone} onChange={e=>setNewBranch({...newBranch,phone:e.target.value})}/><textarea className="border rounded-xl p-2 w-full" placeholder="آدرس" value={newBranch.address} onChange={e=>setNewBranch({...newBranch,address:e.target.value})}/><button className="btn btn-primary w-full" onClick={createBranch}>ساخت شعبه</button></div><div className="border-t mt-5 pt-4"><div className="text-sm text-[#8d8178] mb-2">شعب کسب‌وکار</div>{data.branches.map(b=><button key={b.id} onClick={()=>setSelectedBranchId(b.id)} className={`w-full text-right rounded-xl p-2 mb-1 ${b.id===selectedBranchId?"bg-[#eee6dc] font-bold":""}`}>{b.name}</button>)}</div></aside></div></div>
+}
+

@@ -1,10 +1,22 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.db.models import Sum
 from .models import Payment, BillSplit, BillSplitLine
 from apps.orders.models import Order
 from apps.cashier.models import CashMovement
 from apps.cashier.services import record_cash_movement
+
+_PERSIAN_DIGITS=str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩','01234567890123456789')
+
+def payment_amount(value, *, field_label='مبلغ پرداخت'):
+    normalized=str(value if value is not None else '').translate(_PERSIAN_DIGITS).replace('٬','').replace(',','').strip()
+    try:
+        amount=Decimal(normalized)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError(f'{field_label} معتبر نیست')
+    if not amount.is_finite() or amount!=amount.to_integral_value():
+        raise ValueError(f'{field_label} باید یک عدد صحیح به ریال باشد')
+    return amount
 
 def successful_paid_amount(order):
     return Decimal(order.payments.filter(status__in=[Payment.Status.SUCCEEDED,Payment.Status.PARTIALLY_REFUNDED,Payment.Status.REFUNDED]).aggregate(v=Sum('amount'))['v'] or 0)
@@ -16,11 +28,11 @@ def settle_order(order,*,payments,user=None,require_full=True):
     remaining=max(Decimal('0'),Decimal(order.grand_total)-existing)
     rows=[];new_total=Decimal('0')
     for row in payments or []:
-        amount=Decimal(str(row.get('amount',0)))
-        if amount<=0: raise ValueError('مبلغ Payment باید مثبت باشد')
+        amount=payment_amount(row.get('amount',0))
+        if amount<=0: raise ValueError('مبلغ پرداخت باید مثبت باشد')
         method=row.get('method')
         if method not in dict(Payment.Method.choices): raise ValueError('روش پرداخت نامعتبر است')
-        tendered=Decimal(str(row.get('tendered_amount',amount)))
+        tendered=payment_amount(row.get('tendered_amount',amount),field_label='وجه دریافتی')
         if method==Payment.Method.CASH and tendered<amount: raise ValueError('وجه دریافتی کمتر از مبلغ نقدی است')
         change=(tendered-amount) if method==Payment.Method.CASH else Decimal('0')
         rows.append((amount,method,tendered,change,row.get('reference_number',''),row.get('payer_label',''),row.get('gift_card_code','')))

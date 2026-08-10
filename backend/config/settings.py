@@ -1,5 +1,7 @@
 import os
+from datetime import timedelta
 from pathlib import Path
+from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
 import dj_database_url
 
@@ -21,7 +23,7 @@ INSTALLED_APPS=[
 MIDDLEWARE=[
  'corsheaders.middleware.CorsMiddleware','django.middleware.security.SecurityMiddleware','whitenoise.middleware.WhiteNoiseMiddleware',
  'django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware',
- 'django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware',
+ 'django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 ROOT_URLCONF='config.urls'
 TEMPLATES=[{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[],'APP_DIRS':True,'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
@@ -31,12 +33,18 @@ default_db=f"sqlite:///{BASE_DIR/'db.sqlite3'}"
 DATABASES={'default':dj_database_url.config(default=os.getenv('DATABASE_URL',default_db),conn_max_age=60,conn_health_checks=True)}
 
 AUTH_USER_MODEL='accounts.User'
-LANGUAGE_CODE='fa-ir';TIME_ZONE=os.getenv('DJANGO_TIME_ZONE','Asia/Tehran');USE_I18N=True;USE_TZ=True
+LANGUAGE_CODE='fa'
+LANGUAGES=(
+ ('fa','فارسی'),
+ ('en','English'),
+)
+TIME_ZONE=os.getenv('DJANGO_TIME_ZONE','Asia/Tehran');USE_I18N=True;USE_TZ=True
 STATIC_URL='/static/';STATIC_ROOT=BASE_DIR/'staticfiles'
 STORAGES={'staticfiles':{'BACKEND':'whitenoise.storage.CompressedManifestStaticFilesStorage'}}
 DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS=[x.strip() for x in os.getenv('CORS_ALLOWED_ORIGINS','http://127.0.0.1:3000,http://localhost:3000').split(',') if x.strip()]
+CORS_ALLOW_HEADERS=[*default_headers,'idempotency-key','x-cafino-override']
 CSRF_TRUSTED_ORIGINS=[x.strip() for x in os.getenv('CSRF_TRUSTED_ORIGINS','').split(',') if x.strip()]
 SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
 SESSION_COOKIE_SECURE=not DEBUG
@@ -50,6 +58,23 @@ REST_FRAMEWORK={
  'DEFAULT_FILTER_BACKENDS':['django_filters.rest_framework.DjangoFilterBackend','rest_framework.filters.SearchFilter'],
  'DEFAULT_SCHEMA_CLASS':'drf_spectacular.openapi.AutoSchema',
  'DEFAULT_THROTTLE_RATES':{'public_menu':'120/min','online_order':'20/min'},
+}
+SIMPLE_JWT={
+ 'ACCESS_TOKEN_LIFETIME':timedelta(days=1),
+ 'REFRESH_TOKEN_LIFETIME':timedelta(days=1),
+}
+CELERY_BROKER_URL=os.getenv('CELERY_BROKER_URL','redis://127.0.0.1:6379/0')
+CELERY_TASK_SERIALIZER='json'
+CELERY_ACCEPT_CONTENT=['json']
+CELERY_RESULT_SERIALIZER='json'
+CELERY_TASK_IGNORE_RESULT=True
+CELERY_TIMEZONE=TIME_ZONE
+CELERY_BEAT_SCHEDULE={
+ 'process-pending-notifications':{
+  'task':'apps.notifications.tasks.process_pending_notifications',
+  'schedule':60.0,
+  'options':{'expires':55},
+ },
 }
 SPECTACULAR_SETTINGS={'TITLE':'Cafino API','VERSION':'1.0.0'}
 

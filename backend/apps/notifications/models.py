@@ -19,8 +19,25 @@ class SmsProviderConfig(TimeStampedModel):
     def set_api_key(self,value):
         from .crypto import encrypt_secret
         self.api_key_encrypted=encrypt_secret(value)
+class PagerProviderConfig(TimeStampedModel):
+    branch=models.OneToOneField('businesses.Branch',on_delete=models.CASCADE,related_name='pager_provider')
+    provider_name=models.CharField(max_length=80,default='GENERIC_HTTP')
+    endpoint_url=models.URLField(blank=True)
+    api_key_encrypted=models.TextField(blank=True)
+    headers=models.JSONField(default=dict,blank=True)
+    pager_field=models.CharField(max_length=40,default='pager')
+    message_field=models.CharField(max_length=40,default='message')
+    is_active=models.BooleanField(default=False)
+    timeout_seconds=models.PositiveIntegerField(default=10)
+    @property
+    def api_key(self):
+        from .crypto import decrypt_secret
+        return decrypt_secret(self.api_key_encrypted)
+    def set_api_key(self,value):
+        from .crypto import encrypt_secret
+        self.api_key_encrypted=encrypt_secret(value)
 class Notification(TimeStampedModel):
-    class Channel(models.TextChoices):IN_APP='IN_APP','داخل برنامه';SMS='SMS','پیامک';PUSH='PUSH','Push'
+    class Channel(models.TextChoices):IN_APP='IN_APP','داخل برنامه';SMS='SMS','پیامک';PAGER='PAGER','پیجر';PUSH='PUSH','اعلان مرورگر'
     class Status(models.TextChoices):PENDING='PENDING','در انتظار';PROCESSING='PROCESSING','در حال ارسال';SENT='SENT','ارسال شده';FAILED='FAILED','خطا';CANCELLED='CANCELLED','لغو'
     branch=models.ForeignKey('businesses.Branch',on_delete=models.CASCADE,related_name='notifications')
     customer=models.ForeignKey('customers.Customer',null=True,blank=True,on_delete=models.SET_NULL,related_name='notifications')

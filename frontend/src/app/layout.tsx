@@ -1,7 +1,11 @@
 import "./globals.css";
 import Sidebar from "@/components/sidebar";
 import AuthGuard from "@/components/auth-guard";
+import localFont from "next/font/local";
 
+const vazirMatn = localFont({
+  src: "../../public/font/Vazirmatn-RD-Regular.woff2",
+});
 export const metadata={
   title:"Cafino",
   description:"Hospitality Management Platform",
@@ -10,12 +14,16 @@ export const metadata={
 export const viewport={themeColor:"#211711"};
 
 export default function RootLayout({children}:{children:React.ReactNode}){
-  return <html lang="fa" dir="rtl"><body>
-    <AuthGuard>
-      <div className="flex flex-row-reverse min-h-screen">
-        <Sidebar/>
-        <main className="flex-1 p-6">{children}</main>
-      </div>
-    </AuthGuard>
-  </body></html>;
+  return (
+    <html lang="fa" dir="rtl" className={vazirMatn.className}>
+      <body>
+        <AuthGuard>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="min-w-0 flex-1 p-3 pt-16 sm:p-6 lg:pt-6">{children}</main>
+          </div>
+        </AuthGuard>
+      </body>
+    </html>
+  );
 }

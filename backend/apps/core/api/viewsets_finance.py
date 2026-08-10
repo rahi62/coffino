@@ -2,8 +2,8 @@ from .shared import *
 from .shared import BaseVS, _branch_accessible
 
 class CashRegisterVS(BaseVS):
-    cafino_read_permission=('cashier.use', 'cashier.view')
-    cafino_write_permission='cashier.use'
+    cafino_read_permission=('cashier.use', 'cashier.view', 'settings.manage')
+    cafino_write_permission='settings.manage'
     queryset=CashRegister.objects.all()
     serializer_class=CashRegisterSerializer
 
@@ -68,7 +68,19 @@ class PurchaseInvoiceVS(BaseVS):
             return Response({"detail":str(e)},status=400)
         return Response(SupplierPaymentSerializer(payment).data,status=201)
 
-class PurchaseItemVS(BaseVS): queryset=PurchaseItem.objects.all(); serializer_class=PurchaseItemSerializer; cafino_read_permission=('purchasing.view', 'purchasing.manage')
+class PurchaseItemVS(BaseVS):
+    queryset=PurchaseItem.objects.all()
+    serializer_class=PurchaseItemSerializer
+    cafino_read_permission=('purchasing.view', 'purchasing.manage')
+
+    def create(self,request,*args,**kwargs):
+        return Response({'detail':'ثبت مستقیم آیتم خرید مجاز نیست؛ از فرآیند خرید استفاده کنید.'},status=403)
+
+    def update(self,request,*args,**kwargs):
+        return Response({'detail':'ویرایش مستقیم آیتم خرید مجاز نیست.'},status=403)
+
+    def partial_update(self,request,*args,**kwargs):
+        return Response({'detail':'ویرایش مستقیم آیتم خرید مجاز نیست.'},status=403)
 
 class SupplierPaymentVS(BaseVS): queryset=SupplierPayment.objects.all(); serializer_class=SupplierPaymentSerializer; cafino_read_permission=('purchasing.view', 'purchasing.manage')
 
@@ -161,4 +173,3 @@ class GatewayIntentVS(viewsets.ReadOnlyModelViewSet):
             qs,self.request.user,
             branch_path='payment__order__branch',business_path='payment__order__branch__business'
         )
-

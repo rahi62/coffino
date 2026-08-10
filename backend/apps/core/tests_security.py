@@ -9,8 +9,8 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.businesses.models import Business, Branch
 from apps.catalog.models import Category, Product
-from apps.inventory.models import InventoryItem, StockMovement, StockTransfer
-from apps.orders.models import Order
+from apps.inventory.models import IngredientCategory, InventoryItem, RecipeItem, StockMovement, StockTransfer
+from apps.orders.models import Order, OrderItem
 from apps.orders.services import checkout_order
 from apps.purchasing.models import PurchaseInvoice, PurchaseItem
 from apps.suppliers.models import Supplier
@@ -75,6 +75,105 @@ class TenantSecurityTests(TestCase):
         response=c.get('/api/v1/categories/')
         self.assertEqual(response.status_code,200)
         self.assertEqual({row['id'] for row in response.json()},{self.cat_a1.id})
+
+    def test_inventory_user_can_create_a_category_only_for_own_branch(self):
+        c=self.client_for(self.inventory)
+        response=c.post('/api/v1/categories/',{'branch':self.a1.id,'name':'نوشیدنی سرد'},format='json')
+        self.assertEqual(response.status_code,201)
+        self.assertTrue(Category.objects.filter(branch=self.a1,name='نوشیدنی سرد').exists())
+
+        duplicate=c.post('/api/v1/categories/',{'branch':self.a1.id,'name':'  نوشیدنی سرد  '},format='json')
+        self.assertEqual(duplicate.status_code,400)
+
+        other_business=c.post('/api/v1/categories/',{'branch':self.b1_branch.id,'name':'غیرمجاز'},format='json')
+        self.assertEqual(other_business.status_code,403)
+        self.assertFalse(Category.objects.filter(branch=self.b1_branch,name='غیرمجاز').exists())
+
+    def test_catalog_delete_requires_no_history_or_configuration_dependencies(self):
+        c=self.client_for(self.inventory)
+        removable_category=Category.objects.create(branch=self.a1,name='Removable')
+        removable_product=Product.objects.create(branch=self.a1,name='Removable product',price=100)
+
+        self.assertEqual(c.delete(f'/api/v1/categories/{removable_category.id}/').status_code,204)
+        self.assertEqual(c.delete(f'/api/v1/products/{removable_product.id}/').status_code,204)
+
+        linked_product=Product.objects.create(branch=self.a1,category=self.cat_a1,name='Linked product',price=100)
+        category_response=c.delete(f'/api/v1/categories/{self.cat_a1.id}/')
+        self.assertEqual(category_response.status_code,400)
+        self.assertTrue(Category.objects.filter(pk=self.cat_a1.id).exists())
+
+        order=Order.objects.create(branch=self.a1,order_number=1,order_type=Order.Type.TAKEAWAY)
+        OrderItem.objects.create(order=order,product=linked_product,product_name=linked_product.name,quantity=1,unit_price=100,line_total=100)
+        product_response=c.delete(f'/api/v1/products/{linked_product.id}/')
+        self.assertEqual(product_response.status_code,400)
+        self.assertTrue(Product.objects.filter(pk=linked_product.id).exists())
+
+    def test_inventory_material_can_be_used_once_in_same_branch_recipe(self):
+        c=self.client_for(self.inventory)
+        category_response=c.post('/api/v1/ingredient-categories/',{
+            'branch':self.a1.id,'name':'لبنیات','is_active':True,
+        },format='json')
+        self.assertEqual(category_response.status_code,201)
+        category_id=category_response.json()['id']
+        material_response=c.post('/api/v1/inventory-items/',{
+            'branch':self.a1.id,'name':'شیر تازه','material_category':category_id,'unit':'milliliter',
+            'current_stock':'5000','minimum_stock':'1000','average_cost':'20','is_active':True,
+        },format='json')
+        self.assertEqual(material_response.status_code,201)
+        material_id=material_response.json()['id']
+        self.assertEqual(material_response.json()['material_category_name'],'لبنیات')
+        self.assertEqual(c.delete(f'/api/v1/ingredient-categories/{category_id}/').status_code,400)
+        product=Product.objects.create(branch=self.a1,name='لاته',price=100)
+
+        recipe_response=c.post('/api/v1/recipe-items/',{
+            'product':product.id,'inventory_item':material_id,'quantity':'200',
+        },format='json')
+        self.assertEqual(recipe_response.status_code,201)
+
+        duplicate=c.post('/api/v1/recipe-items/',{
+            'product':product.id,'inventory_item':material_id,'quantity':'100',
+        },format='json')
+        self.assertEqual(duplicate.status_code,400)
+
+        cross_branch=c.post('/api/v1/recipe-items/',{
+            'product':product.id,'inventory_item':self.item_a2.id,'quantity':'100',
+        },format='json')
+        self.assertIn(cross_branch.status_code,{400,403,404})
+
+    def test_recipe_editor_saves_multiple_materials_and_updates_them_atomically(self):
+        c=self.client_for(self.inventory)
+        product=Product.objects.create(branch=self.a1,name='موکا',price=100)
+        milk=InventoryItem.objects.create(branch=self.a1,name='شیر',unit='milliliter')
+        chocolate=InventoryItem.objects.create(branch=self.a1,name='شکلات',unit='gram')
+
+        created=c.put('/api/v1/recipe-items/save-recipe/',{
+            'product':product.id,
+            'ingredients':[
+                {'inventory_item':milk.id,'quantity':'250'},
+                {'inventory_item':chocolate.id,'quantity':'20'},
+            ],
+        },format='json')
+        self.assertEqual(created.status_code,200)
+        self.assertEqual(RecipeItem.objects.filter(product=product).count(),2)
+
+        updated=c.put('/api/v1/recipe-items/save-recipe/',{
+            'product':product.id,
+            'ingredients':[
+                {'inventory_item':milk.id,'quantity':'300'},
+                {'inventory_item':self.item_a1.id,'quantity':'18'},
+            ],
+        },format='json')
+        self.assertEqual(updated.status_code,200)
+        self.assertEqual(RecipeItem.objects.filter(product=product).count(),2)
+        self.assertEqual(RecipeItem.objects.get(product=product,inventory_item=milk).quantity,Decimal('300'))
+        self.assertFalse(RecipeItem.objects.filter(product=product,inventory_item=chocolate).exists())
+
+        denied=c.put('/api/v1/recipe-items/save-recipe/',{
+            'product':product.id,
+            'ingredients':[{'inventory_item':self.item_a2.id,'quantity':'1'}],
+        },format='json')
+        self.assertIn(denied.status_code,{400,403,404})
+        self.assertEqual(RecipeItem.objects.filter(product=product).count(),2)
 
 
     def test_cashier_cannot_read_purchasing_or_inventory_ledger(self):

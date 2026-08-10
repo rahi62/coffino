@@ -4,30 +4,82 @@ services:
     environment:
       POSTGRES_DB: cafino
       POSTGRES_USER: cafino
-      POSTGRES_PASSWORD: cafino-dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes: [cafino_pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cafino -d cafino"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [cafino_redis:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   backend:
     build: ./backend
-    environment:
+    environment: &backend_environment
       DJANGO_DEBUG: "0"
-      DJANGO_SECRET_KEY: change-in-production
-      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
-      DATABASE_URL: postgresql://cafino:cafino-dev@db:5432/cafino
-      CORS_ALLOWED_ORIGINS: http://localhost:3000
-      DJANGO_SECURE_SSL_REDIRECT: "0"
-    depends_on: [db]
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?DJANGO_ALLOWED_HOSTS must be set}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:?CSRF_TRUSTED_ORIGINS must be set}
+      DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports: ["8000:8000"]
-    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    command: sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 60"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    build: ./backend
+    environment: *backend_environment
+    command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--concurrency=2"]
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build: ./backend
+    environment: *backend_environment
+    command: ["celery", "-A", "config", "beat", "--loglevel=INFO"]
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
-        NEXT_PUBLIC_API_ROOT: http://localhost:8000
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL must be set}
+        NEXT_PUBLIC_API_ROOT: ${NEXT_PUBLIC_API_ROOT:?NEXT_PUBLIC_API_ROOT must be set}
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
-      NEXT_PUBLIC_API_ROOT: http://localhost:8000
-    depends_on: [backend]
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL must be set}
+      NEXT_PUBLIC_API_ROOT: ${NEXT_PUBLIC_API_ROOT:?NEXT_PUBLIC_API_ROOT must be set}
+    depends_on:
+      backend:
+        condition: service_healthy
     ports: ["3000:3000"]
+
 volumes:
   cafino_pg:
+  cafino_redis:

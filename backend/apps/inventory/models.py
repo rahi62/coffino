@@ -1,9 +1,21 @@
 from django.db import models
 from apps.core.models import TimeStampedModel
 
+class IngredientCategory(TimeStampedModel):
+    branch=models.ForeignKey('businesses.Branch',on_delete=models.CASCADE,related_name='ingredient_categories')
+    name=models.CharField(max_length=80)
+    sort_order=models.PositiveIntegerField(default=0)
+    is_active=models.BooleanField(default=True)
+    class Meta:
+        unique_together=('branch','name')
+        ordering=['sort_order','name','id']
+    def __str__(self):return self.name
+
 class InventoryItem(TimeStampedModel):
     branch=models.ForeignKey('businesses.Branch',on_delete=models.CASCADE,related_name='inventory_items')
     name=models.CharField(max_length=160)
+    category=models.CharField(max_length=80,blank=True,default='')
+    material_category=models.ForeignKey(IngredientCategory,null=True,blank=True,on_delete=models.SET_NULL,related_name='materials')
     unit=models.CharField(max_length=24,default='gram')
     current_stock=models.DecimalField(max_digits=14,decimal_places=3,default=0)
     minimum_stock=models.DecimalField(max_digits=14,decimal_places=3,default=0)
@@ -12,6 +24,7 @@ class InventoryItem(TimeStampedModel):
     item_code=models.CharField(max_length=80,blank=True)
     lot_tracked=models.BooleanField(default=False)
     shelf_life_days=models.PositiveIntegerField(default=0)
+    is_active=models.BooleanField(default=True)
 
 class StockMovement(TimeStampedModel):
     class Type(models.TextChoices):

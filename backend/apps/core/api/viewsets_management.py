@@ -6,10 +6,17 @@ class AuditLogVS(viewsets.ReadOnlyModelViewSet):
     permission_classes=[permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs=AuditLog.objects.select_related('actor','branch').all()
+        qs=AuditLog.objects.select_related('actor','business','branch').all()
         if not has_perm(self.request.user,'audit.view'):
             return qs.none()
-        return scope_queryset(qs,self.request.user,branch_path='branch',business_path='branch__business')
+        if self.request.user.is_superuser:
+            return qs
+        business=tenant_business(self.request.user)
+        if business is None:
+            return qs.none()
+        if self.request.user.branch_id and not has_perm(self.request.user,'branches.dashboard'):
+            return qs.filter(branch=self.request.user.branch)
+        return qs.filter(models.Q(business=business)|models.Q(business__isnull=True,branch__business=business)).distinct()
 
 class ApprovalRequestVS(viewsets.ReadOnlyModelViewSet):
     serializer_class=ApprovalRequestSerializer
@@ -70,7 +77,10 @@ class UserManagementVS(viewsets.ReadOnlyModelViewSet):
         if business is None:
             return qs.none()
         if has_perm(self.request.user,'permissions.manage'):
-            return qs.filter(business=business)
+            scoped=qs.filter(business=business)
+            if self.request.user.role!=User.Role.OWNER:
+                scoped=scoped.exclude(role=User.Role.OWNER)
+            return scoped
         return qs.filter(pk=self.request.user.pk)
 
     @action(detail=True,methods=['post'])
@@ -78,6 +88,8 @@ class UserManagementVS(viewsets.ReadOnlyModelViewSet):
         if not has_perm(request.user,'permissions.manage'):
             return Response({'detail':'دسترسی ندارید'},status=403)
         u=self.get_object()
+        if not request.user.is_superuser and request.user.role!=User.Role.OWNER and u.role==User.Role.OWNER:
+            return Response({'detail':'فقط مالک می‌تواند دسترسی‌های مالک را تغییر دهد'},status=403)
         overrides=request.data.get('overrides',{})
         clean={k:bool(v) for k,v in overrides.items() if k in ALL_PERMISSION_CODES}
         u.permission_overrides=clean
@@ -93,17 +105,26 @@ class UserManagementVS(viewsets.ReadOnlyModelViewSet):
         role=request.data.get('role')
         if role not in dict(User.Role.choices):
             return Response({'detail':'نقش نامعتبر'},status=400)
+        if not request.user.is_superuser and request.user.role!=User.Role.OWNER:
+            if u.role==User.Role.OWNER or role==User.Role.OWNER:
+                return Response({'detail':'فقط مالک می‌تواند نقش مالک را مدیریت کند'},status=403)
+        branch_supplied='branch' in request.data
         branch_id=request.data.get('branch')
         business_id=request.data.get('business')
         if business_id is not None:
             business=get_object_or_404(Business,pk=business_id)
             assert_business_access(request.user,business)
             u.business=business
-        if branch_id is not None:
-            branch=get_object_or_404(Branch.objects.select_related('business'),pk=branch_id)
-            assert_branch_access(request.user,branch)
-            u.branch=branch
-            u.business=branch.business
+        if branch_supplied:
+            if branch_id:
+                branch=get_object_or_404(Branch.objects.select_related('business'),pk=branch_id)
+                assert_branch_access(request.user,branch)
+                u.branch=branch
+                u.business=branch.business
+            elif role in User.OPERATIONAL_ROLES:
+                return Response({'detail':'نقش عملیاتی باید شعبه مشخص داشته باشد'},status=400)
+            else:
+                u.branch=None
         elif role in User.OPERATIONAL_ROLES and not u.branch_id:
             return Response({'detail':'نقش عملیاتی باید شعبه مشخص داشته باشد'},status=400)
         before={'role':u.role,'branch':u.branch_id,'business':u.business_id}
@@ -293,6 +314,16 @@ class SmsProviderConfigVS(BaseVS):
         qs=super().get_queryset()
         return qs if has_perm(self.request.user,'notifications.manage') else qs.none()
 
+class PagerProviderConfigVS(BaseVS):
+    cafino_read_permission='notifications.manage'
+    cafino_write_permission='notifications.manage'
+    queryset=PagerProviderConfig.objects.select_related('branch').all()
+    serializer_class=PagerProviderConfigSerializer
+
+    def get_queryset(self):
+        qs=super().get_queryset()
+        return qs if has_perm(self.request.user,'notifications.manage') else qs.none()
+
     def perform_create(self,serializer):
         super().perform_create(serializer)
 
@@ -396,4 +427,3 @@ class PushProviderConfigVS(BaseVS):
     def perform_create(self,serializer):
         if not has_perm(self.request.user,'notifications.manage'):raise PermissionDenied('دسترسی ندارید')
         super().perform_create(serializer)
-

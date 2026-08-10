@@ -1,6 +1,7 @@
 from django.db import models
 from apps.core.models import TimeStampedModel
 class AuditLog(TimeStampedModel):
+    business=models.ForeignKey('businesses.Business',null=True,blank=True,on_delete=models.SET_NULL,related_name='audit_logs')
     branch=models.ForeignKey('businesses.Branch',null=True,blank=True,on_delete=models.SET_NULL,related_name='audit_logs')
     actor=models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL,related_name='audit_logs')
     action=models.CharField(max_length=80)

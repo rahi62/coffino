@@ -145,10 +145,12 @@ The packaged Local edition stores its database and persistent encryption secret 
 ## Docker / PostgreSQL
 
 ```bash
-docker compose up --build
+cp .env.docker.example .env.docker
+# Replace every placeholder in .env.docker with production values first.
+docker compose --env-file .env.docker up --build -d
 ```
 
-For real SaaS/Dedicated deployment, change all development secrets/passwords and set production public URLs/build arguments before building.
+Docker starts PostgreSQL, Redis, Django, the Celery worker, Celery Beat and Next.js. The worker processes queued notifications and Beat schedules that processing every minute. Never use the example secrets in production.
 
 ## Demo data
 

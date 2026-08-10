@@ -84,6 +84,9 @@ def checkout_order(*, branch, items, order_type, payment_method=None, payments=N
         tender_rows=payments
         if tender_rows is None:tender_rows=[{'method':payment_method or Payment.Method.POS,'amount':order.grand_total}]
         settle_order(order,payments=tender_rows,user=user,require_full=True)
+        # settle_order locks and reloads its own instance; return a current order
+        # object so API callers never receive a stale unpaid payment state.
+        order.refresh_from_db()
     if not hold_fulfillment:
         order.status=Order.Status.CONFIRMED
         order.save(update_fields=["status","updated_at"])
@@ -210,8 +213,10 @@ def release_held_order(order):
 def transfer_order_items(*,source_order,destination_order,lines,user=None):
     from apps.accounting.pricing import calculate_fiscal_totals
     from apps.audit.services import log_action
-    a=Order.objects.select_for_update().prefetch_related('items').get(pk=source_order.pk)
-    b=Order.objects.select_for_update().prefetch_related('items').get(pk=destination_order.pk)
+    # Do not prefetch items here: the transfer mutates these rows and totals
+    # must be calculated from a fresh database query, not a relation cache.
+    a=Order.objects.select_for_update().get(pk=source_order.pk)
+    b=Order.objects.select_for_update().get(pk=destination_order.pk)
     if a.id==b.id or a.branch_id!=b.branch_id:raise ValueError('دو سفارش معتبر در یک شعبه لازم است')
     if a.payment_status!=Order.PaymentStatus.UNPAID or b.payment_status!=Order.PaymentStatus.UNPAID:raise ValueError('انتقال آیتم فقط قبل از پرداخت مجاز است')
     if a.status in [Order.Status.CANCELLED,Order.Status.COMPLETED] or b.status in [Order.Status.CANCELLED,Order.Status.COMPLETED]:raise ValueError('وضعیت سفارش قابل انتقال نیست')

@@ -3,6 +3,21 @@ from django.utils import timezone
 from .models import Table,TableSession,TableTransferLog
 from apps.audit.services import log_action
 
+def get_or_open_table_session(*, table, branch, user=None):
+    """Return the active session for a branch table, opening a free one safely."""
+    table=Table.objects.select_for_update().select_related('hall__branch').get(pk=table.pk)
+    if table.hall.branch_id!=branch.id:
+        raise ValueError('میز متعلق به شعبه سفارش نیست')
+    session=table.sessions.select_for_update().filter(is_open=True).first()
+    if session:
+        return session
+    if table.status!=Table.Status.FREE:
+        raise ValueError('این میز برای ثبت سفارش داخل سالن قابل انتخاب نیست')
+    session=TableSession.objects.create(table=table,customer_count=1,opened_by=user)
+    table.status=Table.Status.OCCUPIED
+    table.save(update_fields=['status','updated_at'])
+    return session
+
 @transaction.atomic
 def transfer_table_session(session,new_table,*,user=None):
     session=TableSession.objects.select_for_update().select_related('table__hall__branch').get(pk=session.pk,is_open=True)

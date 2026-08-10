@@ -1,11 +1,11 @@
 from .shared import *
 from .shared import BaseVS, _branch_accessible
 
-class HallVS(BaseVS): queryset=Hall.objects.all(); serializer_class=HallSerializer; cafino_write_permission='tables.use'; cafino_read_permission=('tables.use', 'orders.create')
+class HallVS(BaseVS): queryset=Hall.objects.all(); serializer_class=HallSerializer; cafino_write_permission='settings.manage'; cafino_read_permission=('tables.use', 'settings.manage')
 
 class TableVS(BaseVS):
-    cafino_read_permission=('tables.use', 'orders.create')
-    cafino_write_permission='tables.use'
+    cafino_read_permission=('tables.use', 'settings.manage')
+    cafino_write_permission='settings.manage'
     queryset=Table.objects.select_related("hall__branch").all()
     serializer_class=TableSerializer
 
@@ -62,7 +62,7 @@ class TableSessionVS(BaseVS):
 class OrderVS(BaseVS):
     cafino_read_permission='orders.view'
     queryset=Order.objects.select_related("branch","table_session__table").prefetch_related(
-        "items__product__preparation_station","payments"
+        "items__product__preparation_station","payments","kitchen_tickets__station"
     ).all()
     serializer_class=OrderSerializer
     filterset_fields=["branch","order_type","status","payment_status"]
@@ -183,7 +183,7 @@ class StationVS(BaseVS):
 
 class KitchenTicketVS(BaseVS):
     cafino_read_permission='kitchen.view'
-    queryset=KitchenTicket.objects.select_related("order__branch","station").prefetch_related(
+    queryset=KitchenTicket.objects.select_related("order__branch","order__table_session__table","order__takeaway_profile__pager","station").prefetch_related(
         "order__items__product__preparation_station"
     ).all()
     serializer_class=KitchenTicketSerializer
@@ -203,6 +203,15 @@ class KitchenTicketVS(BaseVS):
         if not has_perm(request.user,'kitchen.update'):
             return Response({'detail':'دسترسی ندارید'},status=403)
         t=self.get_object()
+        if t.order.order_type==Order.Type.TAKEAWAY:
+            try:
+                profile=t.order.takeaway_profile
+                if profile.ready_notification_method=='PAGER' and not profile.pager_id:
+                    return Response({'detail':'برای این سفارش بیرون‌بر هنوز پیجر اختصاص داده نشده است.'},status=409)
+                if profile.ready_notification_method=='SMS' and not profile.customer_phone:
+                    return Response({'detail':'برای اطلاع‌رسانی پیامکی، شماره همراه مشتری ثبت نشده است.'},status=409)
+            except TakeawayProfile.DoesNotExist:
+                return Response({'detail':'اطلاعات تحویل سفارش بیرون‌بر ثبت نشده است.'},status=409)
         t.status=KitchenTicket.Status.READY
         t.save(update_fields=["status","updated_at"])
         if not t.order.kitchen_tickets.exclude(status=KitchenTicket.Status.READY).exists():
@@ -213,6 +222,37 @@ class KitchenTicketVS(BaseVS):
             try:
                 x=t.order.online_order
                 x.status='READY'
+                x.save(update_fields=['status','updated_at'])
+            except Exception:
+                pass
+        return Response(self.get_serializer(t).data)
+
+    @action(detail=True,methods=["post"])
+    @transaction.atomic
+    def done(self,request,pk=None):
+        if not has_perm(request.user,'kitchen.update'):
+            return Response({'detail':'دسترسی ندارید'},status=403)
+        scoped=self.get_object()
+        t=KitchenTicket.objects.select_for_update().select_related('order').get(pk=scoped.pk)
+        if t.status not in [KitchenTicket.Status.READY,KitchenTicket.Status.DONE]:
+            return Response({'detail':'فقط تیکت آماده را می‌توان تحویل داد.'},status=409)
+        if t.status==KitchenTicket.Status.READY:
+            t.status=KitchenTicket.Status.DONE
+            t.save(update_fields=["status","updated_at"])
+
+        order=Order.objects.select_for_update().get(pk=t.order_id)
+        is_paid=order.payment_status in [
+            Order.PaymentStatus.PAID,Order.PaymentStatus.PARTIALLY_REFUNDED,Order.PaymentStatus.REFUNDED
+        ]
+        all_delivered=not order.kitchen_tickets.exclude(status=KitchenTicket.Status.DONE).exists()
+        if is_paid and all_delivered and order.status!=Order.Status.COMPLETED:
+            order.status=Order.Status.COMPLETED
+            order.save(update_fields=['status','updated_at'])
+            from apps.loyalty.services import earn_order_points
+            earn_order_points(order)
+            try:
+                x=order.online_order
+                x.status=OnlineOrder.Status.COMPLETED
                 x.save(update_fields=['status','updated_at'])
             except Exception:
                 pass
@@ -244,7 +284,8 @@ class TakeawayProfileVS(BaseVS):
         if x.pager_id:
             return Response({"detail":"پیجر قبلاً اختصاص داده شده"},status=409)
         x.pager=pager
-        x.save(update_fields=["pager","updated_at"])
+        x.ready_notification_method=TakeawayProfile.ReadyNotificationMethod.PAGER
+        x.save(update_fields=["pager","ready_notification_method","updated_at"])
         pager.status=PagerDevice.Status.ASSIGNED
         pager.save(update_fields=["status","updated_at"])
         return Response(self.get_serializer(x).data)
@@ -450,4 +491,3 @@ class BillSplitVS(viewsets.ReadOnlyModelViewSet):
         except ValueError as e:
             return Response({'detail':str(e)},status=400)
         return Response(PaymentSerializer(rows,many=True).data,status=201)
-

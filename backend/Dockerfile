@@ -4,5 +4,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-RUN python manage.py collectstatic --noinput || true
+RUN addgroup --system cafino && adduser --system --ingroup cafino cafino \
+    && python manage.py collectstatic --noinput \
+    && chown -R cafino:cafino /app
+USER cafino
 CMD ["gunicorn","config.wsgi:application","--bind","0.0.0.0:8000","--workers","3","--timeout","60"]
