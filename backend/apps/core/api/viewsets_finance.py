@@ -86,6 +86,13 @@ class SupplierPaymentVS(BaseVS): queryset=SupplierPayment.objects.all(); seriali
 
 class ExpenseCategoryVS(BaseVS): queryset=ExpenseCategory.objects.all(); serializer_class=ExpenseCategorySerializer; cafino_write_permission='expenses.manage'; cafino_read_permission=('expenses.manage', 'reports.view')
 
+class BankAccountVS(BaseVS):
+    queryset=BankAccount.objects.select_related('branch').all()
+    serializer_class=BankAccountSerializer
+    cafino_read_permission=('orders.create', 'cashier.use', 'settings.manage')
+    cafino_write_permission='settings.manage'
+    filterset_fields=['branch', 'kind', 'is_active']
+
 class ExpenseVS(BaseVS):
     cafino_read_permission=('expenses.manage', 'reports.view')
     cafino_write_permission='expenses.manage'

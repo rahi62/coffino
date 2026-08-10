@@ -12,7 +12,7 @@ from apps.takeaway.models import PagerDevice, TakeawayProfile
 from apps.cashier.models import CashRegister, CashShift, CashMovement
 from apps.suppliers.models import Supplier
 from apps.purchasing.models import PurchaseInvoice, PurchaseItem, SupplierPayment
-from apps.accounting.models import ExpenseCategory, Expense, FixedOverhead
+from apps.accounting.models import BankAccount, ExpenseCategory, Expense, FixedOverhead
 
 class BusinessSerializer(serializers.ModelSerializer):
     class Meta: model=Business; fields="__all__"
@@ -67,6 +67,7 @@ class RefundSerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     refunds=RefundSerializer(many=True,read_only=True)
     refunded_amount=serializers.SerializerMethodField()
+    bank_account_name=serializers.CharField(source='bank_account.display_name',read_only=True,allow_null=True)
     def get_refunded_amount(self,obj): return sum((x.amount for x in obj.refunds.all()),0)
     class Meta:
         model=Payment; fields="__all__"
@@ -276,6 +277,14 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
     class Meta: model=SupplierPayment; fields="__all__"
 class ExpenseCategorySerializer(serializers.ModelSerializer):
     class Meta: model=ExpenseCategory; fields="__all__"
+class BankAccountSerializer(serializers.ModelSerializer):
+    display_name=serializers.CharField(read_only=True)
+    class Meta: model=BankAccount; fields="__all__"
+    def validate_identifier_last4(self,value):
+        value=''.join(char for char in str(value or '') if char.isdigit())
+        if value and len(value)!=4:
+            raise serializers.ValidationError('چهار رقم پایانی را وارد کنید.')
+        return value
 class ExpenseSerializer(serializers.ModelSerializer):
     category_name=serializers.CharField(source="category.name",read_only=True,allow_null=True)
     class Meta: model=Expense; fields="__all__"

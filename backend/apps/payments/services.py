@@ -21,6 +21,22 @@ def payment_amount(value, *, field_label='مبلغ پرداخت'):
 def successful_paid_amount(order):
     return Decimal(order.payments.filter(status__in=[Payment.Status.SUCCEEDED,Payment.Status.PARTIALLY_REFUNDED,Payment.Status.REFUNDED]).aggregate(v=Sum('amount'))['v'] or 0)
 
+
+def resolve_bank_account(order, *, account_id, method):
+    """Return a usable account only when it belongs to the order branch."""
+    if not account_id:
+        return None
+    if method not in {Payment.Method.POS, Payment.Method.ONLINE}:
+        raise ValueError('انتخاب حساب فقط برای کارت‌خوان یا پرداخت آنلاین مجاز است')
+    from apps.accounting.models import BankAccount
+    try:
+        account = BankAccount.objects.select_for_update().get(pk=account_id)
+    except (BankAccount.DoesNotExist, TypeError, ValueError):
+        raise ValueError('حساب یا کارت بانکی انتخاب‌شده معتبر نیست')
+    if account.branch_id != order.branch_id or not account.is_active:
+        raise ValueError('حساب یا کارت بانکی انتخاب‌شده برای این شعبه قابل استفاده نیست')
+    return account
+
 @transaction.atomic
 def settle_order(order,*,payments,user=None,require_full=True):
     order=Order.objects.select_for_update().get(pk=order.pk)
@@ -35,14 +51,15 @@ def settle_order(order,*,payments,user=None,require_full=True):
         tendered=payment_amount(row.get('tendered_amount',amount),field_label='وجه دریافتی')
         if method==Payment.Method.CASH and tendered<amount: raise ValueError('وجه دریافتی کمتر از مبلغ نقدی است')
         change=(tendered-amount) if method==Payment.Method.CASH else Decimal('0')
-        rows.append((amount,method,tendered,change,row.get('reference_number',''),row.get('payer_label',''),row.get('gift_card_code','')))
+        rows.append((amount,method,tendered,change,row.get('reference_number',''),row.get('payer_label',''),row.get('gift_card_code',''),row.get('bank_account')))
         new_total+=amount
     if require_full and new_total!=remaining:
         raise ValueError(f'جمع پرداخت‌ها باید دقیقاً {remaining} باشد')
     if new_total>remaining: raise ValueError('جمع پرداخت بیشتر از مانده سفارش است')
     created=[]
-    for amount,method,tendered,change,ref,payer_label,gift_code in rows:
+    for amount,method,tendered,change,ref,payer_label,gift_code,bank_account_id in rows:
         gift_card=None
+        bank_account=resolve_bank_account(order,account_id=bank_account_id,method=method)
         if method==Payment.Method.WALLET:
             if not order.customer_id:raise ValueError('پرداخت کیف پول نیازمند مشتری است')
             from apps.loyalty.services import debit_wallet
@@ -51,7 +68,7 @@ def settle_order(order,*,payments,user=None,require_full=True):
             if not gift_code:raise ValueError('کد کارت هدیه لازم است')
             from apps.giftcards.services import debit_card
             gift_card=debit_card(branch=order.branch,code=gift_code,amount=amount,order=order)
-        p=Payment.objects.create(order=order,amount=amount,method=method,status=Payment.Status.SUCCEEDED,reference_number=ref,payer_label=payer_label,tendered_amount=tendered,change_amount=change,gift_card=gift_card,received_by=user)
+        p=Payment.objects.create(order=order,amount=amount,method=method,status=Payment.Status.SUCCEEDED,reference_number=ref,payer_label=payer_label,tendered_amount=tendered,change_amount=change,gift_card=gift_card,bank_account=bank_account,received_by=user)
         if method==Payment.Method.CASH:
             record_cash_movement(branch=order.branch,movement_type=CashMovement.Type.SALE,amount=amount,user=user,payment=p,note=f'فروش سفارش #{order.order_number}',reference_type='Order',reference_id=order.id)
         created.append(p)
@@ -105,18 +122,19 @@ def settle_bill_split(split,*,payments,user=None):
         amount=Decimal(str(row.get('amount',0)));method=row.get('method');tendered=Decimal(str(row.get('tendered_amount',amount)))
         if amount<=0 or method not in dict(Payment.Method.choices):raise ValueError('Payment نامعتبر است')
         if method==Payment.Method.CASH and tendered<amount:raise ValueError('وجه نقد دریافتی کافی نیست')
-        rows.append((amount,method,tendered,tendered-amount if method==Payment.Method.CASH else Decimal('0'),row.get('reference_number',''),row.get('payer_label',split.label),row.get('gift_card_code','')));new_total+=amount
+        rows.append((amount,method,tendered,tendered-amount if method==Payment.Method.CASH else Decimal('0'),row.get('reference_number',''),row.get('payer_label',split.label),row.get('gift_card_code',''),row.get('bank_account')));new_total+=amount
     if new_total!=remaining:raise ValueError(f'جمع پرداخت Split باید دقیقاً {remaining} باشد')
     made=[]
-    for amount,method,tendered,change,ref,label,gift_code in rows:
+    for amount,method,tendered,change,ref,label,gift_code,bank_account_id in rows:
         gift_card=None
+        bank_account=resolve_bank_account(order,account_id=bank_account_id,method=method)
         if method==Payment.Method.WALLET:
             if not order.customer_id:raise ValueError('پرداخت کیف پول نیازمند مشتری است')
             from apps.loyalty.services import debit_wallet;debit_wallet(order.customer,amount,order=order,reference=f'Split {split.label}')
         elif method==Payment.Method.GIFT_CARD:
             if not gift_code:raise ValueError('کد کارت هدیه لازم است')
             from apps.giftcards.services import debit_card;gift_card=debit_card(branch=order.branch,code=gift_code,amount=amount,order=order)
-        p=Payment.objects.create(order=order,bill_split=split,amount=amount,method=method,status=Payment.Status.SUCCEEDED,reference_number=ref,payer_label=label,tendered_amount=tendered,change_amount=change,gift_card=gift_card,received_by=user)
+        p=Payment.objects.create(order=order,bill_split=split,amount=amount,method=method,status=Payment.Status.SUCCEEDED,reference_number=ref,payer_label=label,tendered_amount=tendered,change_amount=change,gift_card=gift_card,bank_account=bank_account,received_by=user)
         if method==Payment.Method.CASH:record_cash_movement(branch=order.branch,movement_type=CashMovement.Type.SALE,amount=amount,user=user,payment=p,note=f'Split {split.label} سفارش #{order.order_number}',reference_type='Order',reference_id=order.id)
         made.append(p)
     split.status=BillSplit.Status.PAID;split.save(update_fields=['status','updated_at'])

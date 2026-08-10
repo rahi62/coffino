@@ -24,7 +24,7 @@ from apps.cashier.services import close_shift, close_business_day
 from apps.suppliers.models import Supplier
 from apps.purchasing.models import PurchaseInvoice, PurchaseItem, SupplierPayment
 from apps.purchasing.services import post_purchase, create_purchase, pay_supplier
-from apps.accounting.models import ExpenseCategory, Expense, FixedOverhead
+from apps.accounting.models import BankAccount, ExpenseCategory, Expense, FixedOverhead
 from apps.accounting.services import create_expense
 from apps.reports.services import profit_report
 from apps.orders.services import checkout_order, void_order, refund_order, apply_discount
@@ -120,6 +120,7 @@ class BaseVS(viewsets.ModelViewSet):
         'purchasing.purchaseitem':('invoice__branch','invoice__branch__business'),
         'purchasing.supplierpayment':('supplier__branch','supplier__branch__business'),
         'accounting.expensecategory':('branch','branch__business'),
+        'accounting.bankaccount':('branch','branch__business'),
         'accounting.expense':('branch','branch__business'),
         'accounting.fixedoverhead':('branch','branch__business'),
         'accounting.fiscalsettings':('branch','branch__business'),

@@ -14,7 +14,7 @@ r.register("ingredient-categories",IngredientCategoryVS,basename="ingredient-cat
 r.register("pagers",PagerVS);r.register("takeaway-profiles",TakeawayProfileVS)
 r.register("cash-registers",CashRegisterVS);r.register("cash-shifts",CashShiftVS);r.register("cash-movements",CashMovementVS)
 r.register("suppliers",SupplierVS);r.register("purchase-invoices",PurchaseInvoiceVS);r.register("purchase-items",PurchaseItemVS);r.register("supplier-payments",SupplierPaymentVS)
-r.register("expense-categories",ExpenseCategoryVS);r.register("expenses",ExpenseVS);r.register("fixed-overheads",FixedOverheadVS)
+r.register("expense-categories",ExpenseCategoryVS);r.register("bank-accounts",BankAccountVS,basename="bank-account");r.register("expenses",ExpenseVS);r.register("fixed-overheads",FixedOverheadVS)
 r.register("audit-logs",AuditLogVS,basename="audit-log");r.register("approval-requests",ApprovalRequestVS,basename="approval-request")
 r.register("daily-closings",DailyClosingVS,basename="daily-closing");r.register("users",UserManagementVS,basename="user-management")
 r.register("discount-rules",DiscountRuleVS,basename="discount-rule");r.register("staff-schedules",StaffScheduleVS,basename="staff-schedule")

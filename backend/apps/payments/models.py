@@ -25,6 +25,7 @@ class Payment(TimeStampedModel):
     change_amount=models.DecimalField(max_digits=14,decimal_places=0,default=0)
     bill_split=models.ForeignKey('BillSplit',null=True,blank=True,on_delete=models.SET_NULL,related_name='payments')
     gift_card=models.ForeignKey('giftcards.GiftCard',null=True,blank=True,on_delete=models.SET_NULL,related_name='payments')
+    bank_account=models.ForeignKey('accounting.BankAccount',null=True,blank=True,on_delete=models.SET_NULL,related_name='payments')
     received_by=models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL)
 
 class Refund(TimeStampedModel):

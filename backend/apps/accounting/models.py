@@ -1,5 +1,43 @@
 from django.db import models
 from apps.core.models import TimeStampedModel
+
+
+class BankAccount(TimeStampedModel):
+    """A branch-owned destination for card-terminal and bank payments.
+
+    Full card/account numbers are deliberately not stored.  The last four
+    digits are enough to distinguish a terminal/account in daily operations
+    and keep unnecessary financial identifiers out of the application DB.
+    """
+    class Kind(models.TextChoices):
+        CARD = "CARD", "کارت بانکی"
+        ACCOUNT = "ACCOUNT", "حساب بانکی"
+        IBAN = "IBAN", "شبای بانکی"
+
+    branch = models.ForeignKey("businesses.Branch", on_delete=models.CASCADE, related_name="bank_accounts")
+    title = models.CharField(max_length=120)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.CARD)
+    bank_name = models.CharField(max_length=120, blank=True)
+    holder_name = models.CharField(max_length=120, blank=True)
+    identifier_last4 = models.CharField(max_length=4, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["branch", "title"], name="unique_bank_account_title_per_branch"),
+        ]
+        ordering = ["title", "id"]
+
+    @property
+    def display_name(self):
+        suffix = f" •••• {self.identifier_last4}" if self.identifier_last4 else ""
+        bank = f" — {self.bank_name}" if self.bank_name else ""
+        return f"{self.title}{bank}{suffix}"
+
+    def __str__(self):
+        return self.display_name
+
+
 class ExpenseCategory(TimeStampedModel):
     branch=models.ForeignKey("businesses.Branch",on_delete=models.CASCADE,related_name="expense_categories")
     name=models.CharField(max_length=120)
