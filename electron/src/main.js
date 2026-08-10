@@ -68,27 +68,35 @@ function restore(source){
 
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function receiptHtml(p){
+  const template=p.template||{};
+  const paperWidth=Number(p.paper_width)===58?58:80;
+  const templateHeader=template.header?`<div class="center muted">${esc(template.header).replace(/\n/g,"<br>")}</div>`:"";
+  const templateFooter=template.footer?`<p class="center muted">${esc(template.footer).replace(/\n/g,"<br>")}</p>`:"";
+  const customer=template.show_customer!==false&&p.customer?`<div class="muted">مشتری: ${esc(p.customer.name||"")}${p.customer.phone?` — ${esc(p.customer.phone)}`:""}</div>`:"";
   const items=(p.items||[]).map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.quantity)}</td><td>${Number(x.line_total||0).toLocaleString()}</td></tr>`).join("");
   const pays=(p.payments||[]).map(x=>`<div>${x.payer_label?esc(x.payer_label)+" — ":""}${esc(x.method)}: ${Number(x.amount||0).toLocaleString()}${Number(x.change||0)>0?` | باقی‌مانده ${Number(x.change).toLocaleString()}`:""}</div>`).join("");
   return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>
-  @page{margin:3mm}body{font-family:Tahoma,Arial,sans-serif;font-size:11px;color:#000;margin:0}h2{text-align:center;margin:4px 0}
+  @page{size:${paperWidth}mm auto;margin:3mm}body{font-family:Tahoma,Arial,sans-serif;font-size:11px;color:#000;margin:0}h2{text-align:center;margin:4px 0}
   .center{text-align:center}.row{display:flex;justify-content:space-between;border-top:1px dashed #777;padding:4px 0}
   table{width:100%;border-collapse:collapse}th,td{padding:3px;text-align:right;border-bottom:1px dashed #aaa}
   .total{font-size:14px;font-weight:bold}.muted{font-size:9px}
-  </style></head><body><h2>${esc(p.business)}</h2><div class="center">${esc(p.branch)}</div>
+  </style></head><body>${templateHeader}<h2>${esc(p.business)}</h2><div class="center">${esc(p.branch)}</div>
   <div class="row"><span>سفارش #${esc(p.order_number)}</span><span>${esc(p.order_type)}</span></div>
-  ${p.table?`<div>میز: ${esc(p.table)}</div>`:""}<table><thead><tr><th>شرح</th><th>تعداد</th><th>مبلغ</th></tr></thead><tbody>${items}</tbody></table>
+  ${p.table?`<div>میز: ${esc(p.table)}</div>`:""}${customer}<table><thead><tr><th>شرح</th><th>تعداد</th><th>مبلغ</th></tr></thead><tbody>${items}</tbody></table>
   <div class="row"><span>جمع</span><span>${Number(p.subtotal||0).toLocaleString()}</span></div>
   ${Number(p.discount_total||0)>0?`<div class="row"><span>تخفیف</span><span>-${Number(p.discount_total).toLocaleString()}</span></div>`:""}
-  ${Number(p.service_charge_total||0)>0?`<div class="row"><span>${esc(p.service_label||"حق سرویس")}</span><span>${Number(p.service_charge_total).toLocaleString()}</span></div>`:""}
+  ${template.show_service_charge!==false&&Number(p.service_charge_total||0)>0?`<div class="row"><span>${esc(p.service_label||"حق سرویس")}</span><span>${Number(p.service_charge_total).toLocaleString()}</span></div>`:""}
   ${Number(p.delivery_fee_total||0)>0?`<div class="row"><span>هزینه ارسال</span><span>${Number(p.delivery_fee_total).toLocaleString()}</span></div>`:""}
-  ${Number(p.tax_total||0)>0?`<div class="row"><span>${esc(p.tax_label||"مالیات")}</span><span>${Number(p.tax_total).toLocaleString()}</span></div>`:""}
+  ${template.show_tax!==false&&Number(p.tax_total||0)>0?`<div class="row"><span>${esc(p.tax_label||"مالیات")}</span><span>${Number(p.tax_total).toLocaleString()}</span></div>`:""}
   <div class="row total"><span>قابل پرداخت</span><span>${Number(p.grand_total||0).toLocaleString()}</span></div>
-  <div>${pays}</div><p class="center muted">Cafino</p></body></html>`;
+  <div>${pays}</div>${templateFooter}<p class="center muted">کافینو</p></body></html>`;
 }
 function kitchenHtml(p){
+ const template=p.template||{};
+ const templateHeader=template.header?`<div class="center">${esc(template.header).replace(/\n/g,"<br>")}</div>`:"";
+ const templateFooter=template.footer?`<p class="center">${esc(template.footer).replace(/\n/g,"<br>")}</p>`:"";
  const items=(p.items||[]).map(x=>`<div class="item"><b>${esc(x.quantity)} × ${esc(x.name)}</b>${x.notes?`<div>${esc(x.notes)}</div>`:""}</div>`).join("");
- return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>@page{margin:3mm}body{font-family:Tahoma,Arial,sans-serif;font-size:14px}.head{text-align:center;font-size:20px;font-weight:bold}.item{border-top:1px dashed #000;padding:7px 0}</style></head><body><div class="head">#${esc(p.order_number)} — ${esc(p.station)}</div>${p.table?`<div>میز ${esc(p.table)}</div>`:""}<div>${esc(p.order_type)}</div>${items}</body></html>`;
+ return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>@page{margin:3mm}body{font-family:Tahoma,Arial,sans-serif;font-size:14px}.head{text-align:center;font-size:20px;font-weight:bold}.center{text-align:center;font-size:11px}.item{border-top:1px dashed #000;padding:7px 0}</style></head><body>${templateHeader}<div class="head">#${esc(p.order_number)} — ${esc(p.station)}</div>${p.table?`<div>میز ${esc(p.table)}</div>`:""}<div>${esc(p.order_type)}</div>${items}${templateFooter}</body></html>`;
 }
 async function printHtml(html,deviceName){
   const win=new BrowserWindow({show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});

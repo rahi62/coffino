@@ -212,6 +212,18 @@ class PrintTemplateVS(BaseVS):
     def perform_create(self,serializer):
         if not has_perm(self.request.user,'printing.manage'):raise PermissionDenied('دسترسی ندارید')
         super().perform_create(serializer)
+        self._keep_single_default(serializer.instance)
+
+    def perform_update(self,serializer):
+        super().perform_update(serializer)
+        self._keep_single_default(serializer.instance)
+
+    @staticmethod
+    def _keep_single_default(template):
+        if template.is_default:
+            PrintTemplate.objects.filter(
+                branch=template.branch,document_type=template.document_type,is_default=True
+            ).exclude(pk=template.pk).update(is_default=False)
     def perform_update(self,serializer):
         if not has_perm(self.request.user,'printing.manage'):raise PermissionDenied('دسترسی ندارید')
         super().perform_update(serializer)

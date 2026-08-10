@@ -8,6 +8,17 @@ def order_receipt_payload(order):
     except Exception:
         tax_label='مالیات';service_label='حق سرویس'
     if order.customer_id: customer={'name':order.customer.name,'phone':order.customer.phone}
+    template=PrintTemplate.objects.filter(
+        branch=order.branch,document_type=PrintTemplate.DocumentType.RECEIPT,is_default=True
+    ).order_by('-updated_at','-id').first()
+    template_payload={
+        'name':template.name if template else 'رسید استاندارد',
+        'header':template.header if template else '',
+        'footer':template.footer if template else '',
+        'show_tax':template.show_tax if template else True,
+        'show_service_charge':template.show_service_charge if template else True,
+        'show_customer':template.show_customer if template else True,
+    }
     return {
         'document_type':'RECEIPT','order_id':order.id,'order_number':order.order_number,
         'branch':order.branch.name,'business':order.branch.business.name,
@@ -21,18 +32,27 @@ def order_receipt_payload(order):
         'subtotal':str(order.subtotal),'discount_total':str(order.discount_total),
         'service_charge_total':str(order.service_charge_total),'delivery_fee_total':str(order.delivery_fee_total),'tax_total':str(order.tax_total),
         'grand_total':str(order.grand_total),'tax_label':tax_label,'service_label':service_label,
-        'payments':[{'method':p.method,'amount':str(p.amount),'change':str(p.change_amount),'reference':p.reference_number,'payer_label':p.payer_label} for p in order.payments.all()],
+        'payments':[{'method':p.method,'amount':str(p.amount),'change':str(p.change_amount),'reference':p.reference_number,'payer_label':p.payer_label,'bank_account':p.bank_account.display_name if p.bank_account_id else None} for p in order.payments.all()],
+        'template':template_payload,
     }
 
 def create_receipt_job(order,*,printer=None,user=None):
     return PrintJob.objects.create(branch=order.branch,printer=printer,document_type='RECEIPT',entity_type='Order',entity_id=str(order.id),payload=order_receipt_payload(order),created_by=user)
 
 def kitchen_ticket_payload(ticket):
+    template=PrintTemplate.objects.filter(
+        branch=ticket.order.branch,document_type=PrintTemplate.DocumentType.KITCHEN,is_default=True
+    ).order_by('-updated_at','-id').first()
     return {
         'document_type':'KITCHEN','ticket_id':ticket.id,'order_number':ticket.order.order_number,
         'station':ticket.station.name,'order_type':ticket.order.order_type,
         'table':ticket.order.table_session.table.number if ticket.order.table_session_id else None,
-        'items':[{'name':x.product_name,'quantity':str(x.quantity),'notes':x.notes} for x in ticket.order.items.filter(product__preparation_station=ticket.station)]
+        'items':[{'name':x.product_name,'quantity':str(x.quantity),'notes':x.notes} for x in ticket.order.items.filter(product__preparation_station=ticket.station)],
+        'template':{
+            'name':template.name if template else 'تیکت استاندارد آشپزخانه',
+            'header':template.header if template else '',
+            'footer':template.footer if template else '',
+        },
     }
 
 def create_kitchen_job(ticket,*,printer=None,user=None):
