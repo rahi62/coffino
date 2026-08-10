@@ -287,6 +287,7 @@ class BankAccountSerializer(serializers.ModelSerializer):
         return value
 class ExpenseSerializer(serializers.ModelSerializer):
     category_name=serializers.CharField(source="category.name",read_only=True,allow_null=True)
+    bank_account_name=serializers.CharField(source="bank_account.display_name",read_only=True,allow_null=True)
     class Meta: model=Expense; fields="__all__"
 class FixedOverheadSerializer(serializers.ModelSerializer):
     class Meta: model=FixedOverhead; fields="__all__"

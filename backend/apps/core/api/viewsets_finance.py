@@ -112,10 +112,14 @@ class ExpenseVS(BaseVS):
             category=get_object_or_404(ExpenseCategory,pk=request.data.get('category'))
             if category.branch_id!=branch.id:
                 return Response({'detail':'دسته هزینه متعلق به شعبه نیست'},status=400)
+        bank_account=None
+        if request.data.get('bank_account'):
+            bank_account=get_object_or_404(BankAccount,pk=request.data.get('bank_account'))
         try:
             expense=create_expense(
                 branch=branch,title=request.data.get('title','هزینه'),amount=request.data.get('amount'),
                 occurred_at=request.data.get('occurred_at'),category=category,
+                bank_account=bank_account,
                 payment_method=request.data.get('payment_method','CASH'),
                 notes=request.data.get('notes',''),user=request.user
             )

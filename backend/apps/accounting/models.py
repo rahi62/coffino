@@ -46,6 +46,7 @@ class ExpenseCategory(TimeStampedModel):
 class Expense(TimeStampedModel):
     branch=models.ForeignKey("businesses.Branch",on_delete=models.CASCADE,related_name="expenses")
     category=models.ForeignKey(ExpenseCategory,null=True,blank=True,on_delete=models.SET_NULL,related_name="expenses")
+    bank_account=models.ForeignKey(BankAccount,null=True,blank=True,on_delete=models.SET_NULL,related_name="expenses")
     title=models.CharField(max_length=160)
     amount=models.DecimalField(max_digits=14,decimal_places=0)
     payment_method=models.CharField(max_length=24,default="CASH")
