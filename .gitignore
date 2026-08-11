@@ -7,4 +7,5 @@ __pycache__/
 .env.dev
 .env.local
 *.sqlite3
+celerybeat-schedule*
 backend/.venv/
