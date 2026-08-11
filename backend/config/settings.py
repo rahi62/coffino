@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 import dj_database_url
 
 BASE_DIR=Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR/'.env')
+env_file=Path(os.getenv('DJANGO_ENV_FILE',BASE_DIR/'.env'))
+if not env_file.is_absolute():
+    env_file=(BASE_DIR/env_file).resolve()
+load_dotenv(env_file)
 
 SECRET_KEY=os.getenv('DJANGO_SECRET_KEY','dev-secret-change-me')
 DEBUG=os.getenv('DJANGO_DEBUG','1')=='1'

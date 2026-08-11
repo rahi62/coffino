@@ -4,6 +4,7 @@ dist/
 __pycache__/
 *.pyc
 .env
+.env.dev
 .env.local
 *.sqlite3
 backend/.venv/

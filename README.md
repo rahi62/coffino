@@ -43,4 +43,7 @@ Full deployment, architecture, security and external-integration notes are in:
 
 `docs/FINAL_RELEASE.md`
 
+For daily development with Docker limited to PostgreSQL and Redis, see
+`docs/LOCAL_DEVELOPMENT.md`.
+
 External hardware/provider credentials are intentionally adapters: bank POS, physical pagers, SMS credentials and live payment-gateway merchant credentials must come from the selected vendor. Cafino never fakes a successful hardware/PSP operation.
