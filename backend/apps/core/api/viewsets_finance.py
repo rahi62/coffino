@@ -58,11 +58,17 @@ class PurchaseInvoiceVS(BaseVS):
     def pay(self,request,pk=None):
         if not has_perm(request.user,'purchasing.manage'):
             return Response({'detail':'دسترسی ندارید'},status=403)
+        invoice=self.get_object()
+        bank_account=None
+        if request.data.get('bank_account'):
+            bank_account=get_object_or_404(
+                BankAccount,pk=request.data.get('bank_account'),branch=invoice.branch,is_active=True
+            )
         try:
             payment=pay_supplier(
-                invoice=self.get_object(),amount=request.data.get('amount'),
+                invoice=invoice,amount=request.data.get('amount'),
                 method=request.data.get('method','CASH'),reference=request.data.get('reference',''),
-                user=request.user
+                bank_account=bank_account,user=request.user
             )
         except ValueError as e:
             return Response({"detail":str(e)},status=400)
@@ -89,7 +95,7 @@ class ExpenseCategoryVS(BaseVS): queryset=ExpenseCategory.objects.all(); seriali
 class BankAccountVS(BaseVS):
     queryset=BankAccount.objects.select_related('branch').all()
     serializer_class=BankAccountSerializer
-    cafino_read_permission=('orders.create', 'cashier.use', 'settings.manage')
+    cafino_read_permission=('orders.create', 'cashier.use', 'settings.manage', 'purchasing.view', 'purchasing.manage')
     cafino_write_permission='settings.manage'
     filterset_fields=['branch', 'kind', 'is_active']
 

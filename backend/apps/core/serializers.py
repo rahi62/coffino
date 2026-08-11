@@ -274,6 +274,7 @@ class PurchaseInvoiceSerializer(serializers.ModelSerializer):
     balance_due=serializers.DecimalField(max_digits=14,decimal_places=0,read_only=True)
     class Meta: model=PurchaseInvoice; fields="__all__"
 class SupplierPaymentSerializer(serializers.ModelSerializer):
+    bank_account_name=serializers.CharField(source='bank_account.display_name',read_only=True,allow_null=True)
     class Meta: model=SupplierPayment; fields="__all__"
 class ExpenseCategorySerializer(serializers.ModelSerializer):
     class Meta: model=ExpenseCategory; fields="__all__"

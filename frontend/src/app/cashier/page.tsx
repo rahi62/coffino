@@ -3,6 +3,7 @@
 import {useEffect, useMemo, useState} from "react";
 import FormDialog from "@/components/form-dialog";
 import {api} from "@/lib/api";
+import {formatLocalizedDate} from "@/lib/calendar";
 import {label} from "@/lib/i18n";
 
 type Branch = {id:number; name:string; is_active:boolean};
@@ -11,7 +12,7 @@ type CashShift = {
   id:number; register:number; opening_balance:string; expected_cash:string;
   difference:string; is_open:boolean;
 };
-type CashMovement = {id:number; movement_type:string; amount:string; note:string};
+type CashMovement = {id:number; shift:number; movement_type:string; amount:string; note:string; created_at:string};
 
 const normalizeDigits=(value:string)=>value
   .replace(/[۰-۹]/g, digit=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
@@ -70,6 +71,8 @@ export default function Cashier(){
   const activeShift=shifts.find(shift=>shift.register===selectedRegister?.id&&shift.is_open);
   const branchRegisterIds=new Set(branchRegisters.map(register=>register.id));
   const branchShifts=shifts.filter(shift=>branchRegisterIds.has(shift.register));
+  const branchShiftIds=new Set(branchShifts.map(shift=>shift.id));
+  const recentMovements=movements.filter(movement=>branchShiftIds.has(movement.shift)).slice(0,30);
 
   useEffect(()=>{
     setSelectedRegisterId(current=>branchRegisters.some(register=>register.id===current)
@@ -181,8 +184,8 @@ export default function Cashier(){
       </section>
     </div>
 
-    <h2 className="mb-3 mt-7 text-xl font-black">آخرین حرکات نقدی</h2>
-    <div className="card overflow-x-auto"><table className="w-full min-w-[500px]"><thead className="bg-[#eee6dc]"><tr><th className="p-3 text-right">نوع</th><th className="text-right">مبلغ</th><th className="text-right">توضیح</th></tr></thead><tbody>{movements.slice(0,30).map(movement=><tr className="border-t" key={movement.id}><td className="p-3">{label(movement.movement_type)}</td><td>{money(movement.amount)}</td><td>{movement.note||"—"}</td></tr>)}{!movements.length&&<tr><td colSpan={3} className="p-5 text-center text-sm text-[#8d8178]">هنوز گردش نقدی ثبت نشده است.</td></tr>}</tbody></table></div>
+    <div className="mb-3 mt-7"><h2 className="text-xl font-black">آخرین ثبت‌های صندوق</h2><p className="mt-1 text-sm text-[#8d8178]">گردش وجه نقد ثبت‌شده برای شعبهٔ انتخاب‌شده؛ پرداخت‌های کارت یا بانک در این فهرست نمی‌آیند.</p></div>
+    <div className="card overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead className="bg-[#eee6dc]"><tr><th className="p-3 text-right">تاریخ و ساعت</th><th className="text-right">نوع ثبت</th><th className="text-right">مبلغ (ریال)</th><th className="pl-3 text-right">توضیح</th></tr></thead><tbody>{recentMovements.map(movement=><tr className="border-t" key={movement.id}><td className="whitespace-nowrap p-3">{formatLocalizedDate(movement.created_at,true)}</td><td>{label(movement.movement_type)}</td><td className="whitespace-nowrap font-bold">{money(movement.amount)}</td><td className="min-w-64 pl-3">{movement.note||"—"}</td></tr>)}{!recentMovements.length&&<tr><td colSpan={4} className="p-5 text-center text-sm text-[#8d8178]">هنوز ثبت نقدی برای شعبهٔ انتخاب‌شده وجود ندارد.</td></tr>}</tbody></table></div>
     <FormDialog open={dialog==="register"} onClose={()=>setDialog(null)} closeDisabled={creatingRegister} width="sm" title="ایجاد صندوق" description={selectedBranch?`این صندوق برای شعبهٔ «${selectedBranch.name}» ایجاد می‌شود.`:undefined}><label className="block text-sm font-bold">نام صندوق<input autoFocus className="btn mt-1 w-full" placeholder="مثلاً صندوق اصلی" value={registerName} onChange={event=>setRegisterName(event.target.value)}/></label><footer className="mt-5 flex justify-end gap-2"><button className="btn" disabled={creatingRegister} onClick={()=>setDialog(null)}>انصراف</button><button className="btn btn-primary" disabled={creatingRegister||!registerName.trim()} onClick={()=>void createRegister()}>{creatingRegister?"در حال ایجاد…":"ثبت صندوق"}</button></footer></FormDialog>
     <FormDialog open={dialog==="open"} onClose={()=>setDialog(null)} closeDisabled={openingShift} width="sm" title="تأیید شروع شیفت" description={selectedRegister?`شیفت جدید برای صندوق «${selectedRegister.name}» باز می‌شود.`:undefined}><div className="rounded-xl bg-[#f7f0e8] p-3 text-sm">موجودی افتتاحیه: <b>{money(normalizeDigits(opening)||0)} ریال</b></div><p className="mt-3 text-sm text-[#8d8178]">بعد از ثبت، این مبلغ مبنای محاسبهٔ اختلاف پایان شیفت است.</p><footer className="mt-5 flex justify-end gap-2"><button className="btn" disabled={openingShift} onClick={()=>setDialog(null)}>بازگشت</button><button className="btn btn-primary" disabled={openingShift} onClick={()=>void openShift()}>{openingShift?"در حال بازکردن…":"تأیید و باز کردن شیفت"}</button></footer></FormDialog>
     <FormDialog open={dialog==="close"} onClose={()=>{setDialog(null);setClosingShift(null)}} width="sm" title="بستن شیفت صندوق" description={closingShift?`مبلغ مورد انتظار: ${money(closingShift.expected_cash)} ریال`:undefined}><label className="block text-sm font-bold">موجودی واقعی نقدی (ریال)<input autoFocus className="btn mt-1 w-full" inputMode="numeric" placeholder="مثلاً ۵۰۰٬۰۰۰ یا ۰" value={actualCash} onChange={event=>setActualCash(event.target.value)}/></label><p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">پس از تأیید، اختلاف نقدی ثبت و شیفت بسته می‌شود. این عملیات را فقط پس از شمارش واقعی وجه نقد انجام دهید.</p><footer className="mt-5 flex justify-end gap-2"><button className="btn" onClick={()=>{setDialog(null);setClosingShift(null)}}>بازگشت</button><button className="btn btn-primary" onClick={()=>void closeShift()}>تأیید و بستن شیفت</button></footer></FormDialog>

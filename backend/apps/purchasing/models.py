@@ -27,6 +27,7 @@ class PurchaseItem(TimeStampedModel):
 class SupplierPayment(TimeStampedModel):
     supplier=models.ForeignKey("suppliers.Supplier",on_delete=models.PROTECT,related_name="payments")
     purchase_invoice=models.ForeignKey(PurchaseInvoice,null=True,blank=True,on_delete=models.SET_NULL,related_name="supplier_payments")
+    bank_account=models.ForeignKey("accounting.BankAccount",null=True,blank=True,on_delete=models.SET_NULL,related_name="supplier_payments")
     amount=models.DecimalField(max_digits=14,decimal_places=0)
     method=models.CharField(max_length=24,default="CASH")
     reference=models.CharField(max_length=120,blank=True)

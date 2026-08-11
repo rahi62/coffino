@@ -7,6 +7,7 @@ from apps.cashier.models import CashMovement
 from apps.cashier.services import record_cash_movement
 from apps.inventory.lot_services import receive_stock
 from apps.inventory.models import InventoryItem, StockMovement
+from apps.accounting.models import BankAccount
 from apps.purchasing.models import PurchaseInvoice, PurchaseItem, SupplierPayment
 from apps.suppliers.models import Supplier
 
@@ -23,7 +24,7 @@ def _validate_purchase_scope(*,branch,supplier,rows):
 
 
 @transaction.atomic
-def create_purchase(*, branch, supplier, rows, invoice_date, user=None, invoice_number='', notes='', paid_amount=0, payment_method='CASH'):
+def create_purchase(*, branch, supplier, rows, invoice_date, user=None, invoice_number='', notes='', paid_amount=0, payment_method='CASH', bank_account=None):
     # Re-load mutable references under lock and validate domain isolation before writing anything.
     supplier=Supplier.objects.select_for_update().get(pk=supplier.pk)
     locked_rows=[]
@@ -50,7 +51,7 @@ def create_purchase(*, branch, supplier, rows, invoice_date, user=None, invoice_
     post_purchase(invoice)
     paid=Decimal(str(paid_amount or 0))
     if paid>0:
-        pay_supplier(invoice=invoice,amount=paid,method=payment_method,user=user)
+        pay_supplier(invoice=invoice,amount=paid,method=payment_method,bank_account=bank_account,user=user)
     return PurchaseInvoice.objects.prefetch_related('items').get(pk=invoice.pk)
 
 
@@ -89,7 +90,7 @@ def post_purchase(invoice):
 
 
 @transaction.atomic
-def pay_supplier(*, invoice, amount, method='CASH', reference='', user=None):
+def pay_supplier(*, invoice, amount, method='CASH', reference='', bank_account=None, user=None):
     invoice=PurchaseInvoice.objects.select_for_update().select_related('supplier','branch').get(pk=invoice.pk)
     supplier=Supplier.objects.select_for_update().get(pk=invoice.supplier_id)
     if supplier.branch_id!=invoice.branch_id:
@@ -102,9 +103,14 @@ def pay_supplier(*, invoice, amount, method='CASH', reference='', user=None):
     if amount<=0 or amount>due:
         raise ValueError('مبلغ پرداخت نامعتبر است.')
 
+    if bank_account:
+        bank_account=BankAccount.objects.select_for_update().get(pk=bank_account.pk)
+        if bank_account.branch_id!=invoice.branch_id or not bank_account.is_active:
+            raise ValueError('کارت یا حساب بانکی انتخاب‌شده برای این شعبه فعال نیست.')
+
     payment=SupplierPayment.objects.create(
         supplier=supplier,purchase_invoice=invoice,amount=amount,method=method,
-        reference=reference,created_by=user
+        bank_account=bank_account,reference=reference,created_by=user
     )
     invoice.paid_amount=Decimal(invoice.paid_amount)+amount
     invoice.save(update_fields=['paid_amount','updated_at'])

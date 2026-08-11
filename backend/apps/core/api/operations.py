@@ -155,6 +155,11 @@ def create_multi_purchase(request):
         return Response({'detail':'شعبه خرید معتبر یا مجاز نیست'},status=403)
 
     supplier=get_object_or_404(Supplier,pk=request.data.get('supplier'),branch=branch)
+    bank_account=None
+    if request.data.get('bank_account'):
+        bank_account=get_object_or_404(
+            BankAccount,pk=request.data.get('bank_account'),branch=branch,is_active=True
+        )
     rows=[]
     for raw in request.data.get('items',[]):
         item=get_object_or_404(InventoryItem,pk=raw.get('inventory_item'),branch=branch)
@@ -167,7 +172,7 @@ def create_multi_purchase(request):
             branch=branch,supplier=supplier,rows=rows,invoice_date=request.data.get('invoice_date'),
             user=request.user,invoice_number=request.data.get('invoice_number',''),
             notes=request.data.get('notes',''),paid_amount=request.data.get('paid_amount',0),
-            payment_method=request.data.get('payment_method','CASH')
+            payment_method=request.data.get('payment_method','CASH'),bank_account=bank_account
         )
     except ValueError as e:
         return Response({'detail':str(e)},status=400)
