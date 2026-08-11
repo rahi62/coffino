@@ -267,10 +267,12 @@ class SupplierSerializer(serializers.ModelSerializer):
     class Meta: model=Supplier; fields="__all__"
 class PurchaseItemSerializer(serializers.ModelSerializer):
     inventory_name=serializers.CharField(source="inventory_item.name",read_only=True)
+    inventory_unit=serializers.CharField(source="inventory_item.unit",read_only=True)
     class Meta: model=PurchaseItem; fields="__all__"
 class PurchaseInvoiceSerializer(serializers.ModelSerializer):
     items=PurchaseItemSerializer(many=True,read_only=True)
     supplier_name=serializers.CharField(source="supplier.name",read_only=True)
+    created_by_name=serializers.CharField(source="created_by.username",read_only=True,allow_null=True)
     balance_due=serializers.DecimalField(max_digits=14,decimal_places=0,read_only=True)
     class Meta: model=PurchaseInvoice; fields="__all__"
 class SupplierPaymentSerializer(serializers.ModelSerializer):

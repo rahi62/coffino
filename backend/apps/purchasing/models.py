@@ -7,6 +7,7 @@ class PurchaseInvoice(TimeStampedModel):
     supplier=models.ForeignKey("suppliers.Supplier",on_delete=models.PROTECT,related_name="invoices")
     invoice_number=models.CharField(max_length=80,blank=True)
     invoice_date=models.DateField()
+    purchaser_name=models.CharField(max_length=140,blank=True)
     status=models.CharField(max_length=16,choices=Status.choices,default=Status.DRAFT)
     total_amount=models.DecimalField(max_digits=14,decimal_places=0,default=0)
     paid_amount=models.DecimalField(max_digits=14,decimal_places=0,default=0)

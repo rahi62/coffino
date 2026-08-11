@@ -24,7 +24,7 @@ def _validate_purchase_scope(*,branch,supplier,rows):
 
 
 @transaction.atomic
-def create_purchase(*, branch, supplier, rows, invoice_date, user=None, invoice_number='', notes='', paid_amount=0, payment_method='CASH', bank_account=None):
+def create_purchase(*, branch, supplier, rows, invoice_date, user=None, invoice_number='', purchaser_name='', notes='', paid_amount=0, payment_method='CASH', bank_account=None):
     # Re-load mutable references under lock and validate domain isolation before writing anything.
     supplier=Supplier.objects.select_for_update().get(pk=supplier.pk)
     locked_rows=[]
@@ -35,7 +35,7 @@ def create_purchase(*, branch, supplier, rows, invoice_date, user=None, invoice_
 
     invoice=PurchaseInvoice.objects.create(
         branch=branch,supplier=supplier,invoice_number=invoice_number,
-        invoice_date=invoice_date,notes=notes,created_by=user
+        invoice_date=invoice_date,purchaser_name=purchaser_name.strip(),notes=notes,created_by=user
     )
     for row in locked_rows:
         qty=Decimal(str(row['quantity']))

@@ -171,7 +171,7 @@ def create_multi_purchase(request):
         obj=create_purchase(
             branch=branch,supplier=supplier,rows=rows,invoice_date=request.data.get('invoice_date'),
             user=request.user,invoice_number=request.data.get('invoice_number',''),
-            notes=request.data.get('notes',''),paid_amount=request.data.get('paid_amount',0),
+            purchaser_name=request.data.get('purchaser_name',''),notes=request.data.get('notes',''),paid_amount=request.data.get('paid_amount',0),
             payment_method=request.data.get('payment_method','CASH'),bank_account=bank_account
         )
     except ValueError as e:

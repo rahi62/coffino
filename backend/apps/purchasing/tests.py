@@ -4,8 +4,9 @@ from django.test import TestCase
 
 from apps.accounting.models import BankAccount
 from apps.businesses.models import Branch, Business
+from apps.inventory.models import InventoryItem
 from apps.purchasing.models import PurchaseInvoice, SupplierPayment
-from apps.purchasing.services import pay_supplier
+from apps.purchasing.services import create_purchase, pay_supplier
 from apps.suppliers.models import Supplier
 
 
@@ -36,6 +37,23 @@ class SupplierPaymentBankAccountTests(TestCase):
         self.assertEqual(payment.bank_account_id, account.id)
         self.invoice.refresh_from_db()
         self.assertEqual(self.invoice.paid_amount, Decimal("100000"))
+
+    def test_purchase_records_buyer_and_base_unit_quantity(self):
+        ingredient = InventoryItem.objects.create(branch=self.branch, name="قهوه", unit="gram")
+
+        invoice = create_purchase(
+            branch=self.branch,
+            supplier=self.supplier,
+            rows=[{"inventory_item": ingredient, "quantity": "5000", "unit_cost": "120"}],
+            invoice_date="2026-08-11",
+            purchaser_name="مریم رضایی",
+        )
+
+        invoice.refresh_from_db()
+        ingredient.refresh_from_db()
+        self.assertEqual(invoice.purchaser_name, "مریم رضایی")
+        self.assertEqual(invoice.items.get().quantity, Decimal("5000"))
+        self.assertEqual(ingredient.current_stock, Decimal("5000"))
 
     def test_payment_rejects_bank_account_from_another_branch(self):
         account = BankAccount.objects.create(branch=self.other_branch, title="کارت شعبهٔ دوم")
