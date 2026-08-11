@@ -20,13 +20,13 @@ if (!(Test-Path (Join-Path $frontendPath "node_modules"))) {
 if (!(Test-Path (Join-Path $frontendPath ".env.local"))) {
   Copy-Item (Join-Path $frontendPath ".env.local.example") (Join-Path $frontendPath ".env.local")
 }
-if (!$SkipInfrastructure) {
-  & (Join-Path $PSScriptRoot "dev-infra.ps1")
-}
 foreach ($port in @(3000,8000)) {
   if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
     throw "Port $port is already in use. Stop the full Docker backend/frontend stack before starting local development."
   }
+}
+if (!$SkipInfrastructure) {
+  & (Join-Path $PSScriptRoot "dev-infra.ps1")
 }
 
 $previousEnvFile=$env:DJANGO_ENV_FILE
