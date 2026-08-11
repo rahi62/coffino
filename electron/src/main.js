@@ -98,6 +98,56 @@ function kitchenHtml(p){
  const items=(p.items||[]).map(x=>`<div class="item"><b>${esc(x.quantity)} × ${esc(x.name)}</b>${x.notes?`<div>${esc(x.notes)}</div>`:""}</div>`).join("");
  return `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>@page{margin:3mm}body{font-family:Tahoma,Arial,sans-serif;font-size:14px}.head{text-align:center;font-size:20px;font-weight:bold}.center{text-align:center;font-size:11px}.item{border-top:1px dashed #000;padding:7px 0}</style></head><body>${templateHeader}<div class="head">#${esc(p.order_number)} — ${esc(p.station)}</div>${p.table?`<div>میز ${esc(p.table)}</div>`:""}<div>${esc(p.order_type)}</div>${items}${templateFooter}</body></html>`;
 }
+function savedLayout(template,type){
+  const defaults=type==="RECEIPT"?["business","header","order","customer","items","summary","payment","barcode","footer"]:["business","header","order","items","footer"];
+  const stored=template&&template.layout||{};
+  const allowed=new Set(defaults);
+  const blocks=Array.isArray(stored.blocks)?stored.blocks.filter(block=>allowed.has(block)):defaults;
+  return {paperWidth:Number(stored.paper_width)===58?58:80,blocks:blocks.length?blocks:defaults};
+}
+function faMoney(value){return Number(value||0).toLocaleString("fa-IR");}
+function savedReceiptHtml(p){
+  const template=p.template||{},layout=savedLayout(template,"RECEIPT");
+  const header=template.header?'<div class="center muted">'+esc(template.header).replace(/\n/g,"<br>")+"</div>":"";
+  const footer=template.footer?'<p class="center muted">'+esc(template.footer).replace(/\n/g,"<br>")+"</p>":"";
+  const customer=template.show_customer!==false&&p.customer?'<div class="muted">مشتری: '+esc(p.customer.name||"")+(p.customer.phone?" — "+esc(p.customer.phone):"")+"</div>":"";
+  const items=(p.items||[]).map(x=>"<tr><td>"+esc(x.name)+"</td><td>"+esc(x.quantity)+"</td><td>"+faMoney(x.line_total)+"</td></tr>").join("");
+  const payments=(p.payments||[]).map(x=>"<div>"+(x.payer_label?esc(x.payer_label)+" — ":"")+esc(x.method)+": "+faMoney(x.amount)+(Number(x.change||0)>0?" | باقی‌مانده "+faMoney(x.change):"")+"</div>").join("");
+  const summary='<div class="row"><span>جمع</span><span>'+faMoney(p.subtotal)+"</span></div>"+
+    (Number(p.discount_total||0)>0?'<div class="row"><span>تخفیف</span><span>-'+faMoney(p.discount_total)+"</span></div>":"")+
+    (template.show_service_charge!==false&&Number(p.service_charge_total||0)>0?'<div class="row"><span>'+esc(p.service_label||"حق سرویس")+"</span><span>"+faMoney(p.service_charge_total)+"</span></div>":"")+
+    (Number(p.delivery_fee_total||0)>0?'<div class="row"><span>هزینه ارسال</span><span>'+faMoney(p.delivery_fee_total)+"</span></div>":"")+
+    (template.show_tax!==false&&Number(p.tax_total||0)>0?'<div class="row"><span>'+esc(p.tax_label||"مالیات")+"</span><span>"+faMoney(p.tax_total)+"</span></div>":"")+
+    '<div class="row total"><span>قابل پرداخت</span><span>'+faMoney(p.grand_total)+"</span></div>";
+  const parts={
+    business:"<h2>"+esc(p.business)+"</h2><div class=\"center\">"+esc(p.branch)+"</div>",
+    header,
+    order:'<div class="row"><span>سفارش #'+esc(p.order_number)+"</span><span>"+esc(p.order_type)+"</span></div>"+(p.table?"<div>میز: "+esc(p.table)+"</div>":""),
+    customer,
+    items:'<table><thead><tr><th>شرح</th><th>تعداد</th><th>مبلغ</th></tr></thead><tbody>'+items+"</tbody></table>",
+    summary,
+    payment:payments?'<div class="row"><div>'+payments+"</div></div>":"",
+    barcode:'<div class="barcode">'+esc(p.order_number)+"</div>",
+    footer,
+  };
+  const body=layout.blocks.map(block=>parts[block]||"").join("");
+  return '<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>@page{size:'+layout.paperWidth+'mm auto;margin:3mm}body{font-family:Tahoma,Arial,sans-serif;font-size:11px;color:#000;margin:0}h2{text-align:center;margin:4px 0}.center{text-align:center}.row{display:flex;justify-content:space-between;border-top:1px dashed #777;padding:4px 0}table{width:100%;border-collapse:collapse}th,td{padding:3px;text-align:right;border-bottom:1px dashed #aaa}.total{font-size:14px;font-weight:bold}.muted{font-size:9px}.barcode{direction:ltr;letter-spacing:3px;text-align:center;font-family:monospace;margin:8px 0}</style></head><body>'+body+"</body></html>";
+}
+function savedKitchenHtml(p){
+  const template=p.template||{},layout=savedLayout(template,"KITCHEN");
+  const header=template.header?'<div class="center">'+esc(template.header).replace(/\n/g,"<br>")+"</div>":"";
+  const footer=template.footer?'<p class="center">'+esc(template.footer).replace(/\n/g,"<br>")+"</p>":"";
+  const items=(p.items||[]).map(x=>'<div class="item"><b>'+esc(x.quantity)+" × "+esc(x.name)+"</b>"+(x.notes?"<div>"+esc(x.notes)+"</div>":"")+"</div>").join("");
+  const parts={
+    business:'<div class="head">'+esc(p.station)+"</div>",
+    header,
+    order:'<div class="head">#'+esc(p.order_number)+"</div>"+(p.table?"<div>میز "+esc(p.table)+"</div>":"")+"<div>"+esc(p.order_type)+"</div>",
+    items,
+    footer,
+  };
+  const body=layout.blocks.map(block=>parts[block]||"").join("");
+  return '<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>@page{size:'+layout.paperWidth+'mm auto;margin:3mm}body{font-family:Tahoma,Arial,sans-serif;font-size:14px}.head{text-align:center;font-size:20px;font-weight:bold}.center{text-align:center;font-size:11px}.item{border-top:1px dashed #000;padding:7px 0}</style></head><body>'+body+"</body></html>";
+}
 async function printHtml(html,deviceName){
   const win=new BrowserWindow({show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
   try{
@@ -123,7 +173,7 @@ ipcMain.handle("backup:restore",async()=>{const r=await dialog.showOpenDialog({t
 ipcMain.handle("system:openExternal",async(_,url)=>{if(/^https?:\/\//.test(url))await shell.openExternal(url);return true});
 ipcMain.handle("printer:list",async()=>{const w=BrowserWindow.getAllWindows()[0];return w?await w.webContents.getPrintersAsync():[]});
 ipcMain.handle("printer:printHtml",async(_,args)=>printHtml(args?.html||"",args?.deviceName));
-ipcMain.handle("printer:printReceipt",async(_,args)=>printHtml(receiptHtml(args?.payload||{}),args?.deviceName));
-ipcMain.handle("printer:printKitchen",async(_,args)=>printHtml(kitchenHtml(args?.payload||{}),args?.deviceName));
+ipcMain.handle("printer:printReceipt",async(_,args)=>printHtml(savedReceiptHtml(args?.payload||{}),args?.deviceName));
+ipcMain.handle("printer:printKitchen",async(_,args)=>printHtml(savedKitchenHtml(args?.payload||{}),args?.deviceName));
 ipcMain.handle("pager:call",async(_,pager)=>({ok:false,message:"Pager adapter requires selected hardware protocol.",pager}));
 ipcMain.handle("pos:sendAmount",async(_,amount)=>({ok:false,message:"Bank POS requires selected vendor SDK/API.",amount}));

@@ -28,6 +28,7 @@ class PrintTemplate(TimeStampedModel):
     show_tax=models.BooleanField(default=True)
     show_service_charge=models.BooleanField(default=True)
     show_customer=models.BooleanField(default=True)
+    layout=models.JSONField(default=dict,blank=True)
     is_default=models.BooleanField(default=False)
 
 class PrintJob(TimeStampedModel):

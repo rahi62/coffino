@@ -25,6 +25,17 @@ class ReceiptTemplatePayloadTests(TestCase):
         self.assertEqual(payload['template']['header'], 'سپاس از خرید شما')
         self.assertFalse(payload['template']['show_tax'])
 
+    def test_receipt_layout_is_included_in_payload(self):
+        business = Business.objects.create(name='کافهٔ آزمایشی')
+        branch = Branch.objects.create(business=business, name='شعبهٔ اصلی')
+        product = Product.objects.create(branch=branch, name='نوشیدنی', price=1000)
+        PrintTemplate.objects.create(
+            branch=branch, name='فیش سفارشی', document_type=PrintTemplate.DocumentType.RECEIPT,
+            is_default=True, layout={'paper_width': 58, 'blocks': ['business', 'items', 'total']},
+        )
+        order = checkout_order(branch=branch, items=[{'product': product, 'quantity': 1}], order_type='TAKEAWAY', payment_method='POS')
+        self.assertEqual(order_receipt_payload(order)['template']['layout']['paper_width'], 58)
+
     def test_default_kitchen_template_is_included_in_a_ticket_payload(self):
         business = Business.objects.create(name='کافه آزمایشی')
         branch = Branch.objects.create(business=business, name='شعبه اصلی')

@@ -18,6 +18,7 @@ def order_receipt_payload(order):
         'show_tax':template.show_tax if template else True,
         'show_service_charge':template.show_service_charge if template else True,
         'show_customer':template.show_customer if template else True,
+        'layout':template.layout if template else {},
     }
     return {
         'document_type':'RECEIPT','order_id':order.id,'order_number':order.order_number,
@@ -52,6 +53,7 @@ def kitchen_ticket_payload(ticket):
             'name':template.name if template else 'تیکت استاندارد آشپزخانه',
             'header':template.header if template else '',
             'footer':template.footer if template else '',
+            'layout':template.layout if template else {},
         },
     }
 
