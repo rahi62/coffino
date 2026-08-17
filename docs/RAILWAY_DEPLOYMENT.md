@@ -47,7 +47,7 @@ GUNICORN_WORKERS=3
 GUNICORN_TIMEOUT=60
 ```
 
-`RAILWAY_PUBLIC_DOMAIN` is automatically appended to `ALLOWED_HOSTS`. You may still set explicit hosts:
+Railway-provided `RAILWAY_PUBLIC_DOMAIN` and `RAILWAY_PRIVATE_DOMAIN` are automatically appended to Django `ALLOWED_HOSTS`. You may still set explicit custom hosts:
 
 ```text
 DJANGO_ALLOWED_HOSTS=api.example.com
@@ -92,7 +92,40 @@ Beat command is defined in `/backend/railway-beat.toml` and writes its local sch
 
 Run exactly one Beat replica.
 
-## 5. Optional Production Operations
+## 5. First Business and Owner — no demo seed
+
+Do not use development/demo seed data on a production Railway database.
+
+After the first successful migration, set a temporary Railway variable on the Backend service:
+
+```text
+CAF_INO_BOOTSTRAP_OWNER_PASSWORD=<strong-temporary-password>
+```
+
+Then run a one-off command in the Backend service/container:
+
+```bash
+python manage.py bootstrap_business_owner \
+  --business-name "Your Cafe" \
+  --username "owner" \
+  --email "owner@example.com" \
+  --branch-name "Main" \
+  --deployment-type SAAS
+```
+
+The command:
+
+- validates the password using Django password validators,
+- creates no demo product/order/inventory data,
+- creates or safely reuses the exact Business and Branch,
+- creates an `OWNER` tenant user,
+- is idempotent and does **not** reset an existing matching owner's password by default,
+- fails instead of taking over a username belonging to another tenant/role,
+- refuses an existing business with a mismatched deployment profile.
+
+After a successful bootstrap, remove `CAF_INO_BOOTSTRAP_OWNER_PASSWORD` from Railway variables. To deliberately rotate the same owner's password, set the temporary variable again and run the command with `--reset-password`, then remove it again.
+
+## 6. Optional Production Operations
 
 The central web deployment can act as the Cafino Local Operations Control Plane. Configure the same **public** Ed25519 license verification key used by Local releases:
 
@@ -108,7 +141,7 @@ Local clients can then be built with:
 CAF_INO_OPS_ENDPOINT=https://<backend-domain>/api/ops/v1
 ```
 
-## 6. Health checks
+## 7. Health checks
 
 Backend Railway health check:
 
@@ -126,7 +159,7 @@ Frontend health check:
 
 Do not use authenticated pages for Railway health checks.
 
-## 7. First production deploy order
+## 8. First production deploy order
 
 1. Create PostgreSQL and Redis.
 2. Deploy Backend and generate its public domain.
@@ -136,10 +169,11 @@ Do not use authenticated pages for Railway health checks.
 6. Deploy Frontend and generate its public domain.
 7. Add the Frontend HTTPS origin to Backend `CAF_INO_FRONTEND_ORIGIN`, then redeploy Backend.
 8. Open `/api/v1/health/` and `/login`.
-9. Create the first Business/Owner, run Settings → Onboarding, then Settings → Go-Live.
-10. Test login, product creation, checkout, kitchen flow, online menu, SMS queue and reports.
+9. Run `bootstrap_business_owner`, then remove its temporary password variable.
+10. Log in as the Owner, run Settings → Onboarding, then Settings → Go-Live.
+11. Test product creation, checkout, kitchen flow, online menu, SMS queue and reports.
 
-## 8. Production acceptance
+## 9. Production acceptance
 
 Before public use verify:
 
@@ -152,9 +186,10 @@ Before public use verify:
 - migrations completed in pre-deploy.
 - Backend health check is green.
 - only one Beat replica exists.
+- temporary bootstrap password variable has been removed.
 - database backups are enabled in Railway/project policy.
 - Settings → Go-Live reports the SaaS profile ready.
 
-## 9. Local vs Web hardware boundary
+## 10. Local vs Web hardware boundary
 
 The browser SaaS edition cannot directly access Windows POS-terminal SDKs, USB/serial devices or local printers. Hardware integration remains in Cafino Local/Electron. The same web UI detects the Electron bridge and uses it when present; in a normal web browser POS payments remain manual/online unless a separate local hardware bridge is deliberately installed.
