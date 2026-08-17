@@ -15,13 +15,15 @@ SECRET_KEY=os.getenv('DJANGO_SECRET_KEY','dev-secret-change-me')
 DEBUG=os.getenv('DJANGO_DEBUG','1')=='1'
 ENVIRONMENT=os.getenv('CAF_INO_ENV','local')
 ALLOWED_HOSTS=[x.strip() for x in os.getenv('DJANGO_ALLOWED_HOSTS','127.0.0.1,localhost').split(',') if x.strip()]
+CAF_INO_LICENSE_PUBLIC_KEY_PEM=os.getenv('CAF_INO_LICENSE_PUBLIC_KEY_PEM','')
+CAF_INO_LICENSE_PUBLIC_KEY_PATH=os.getenv('CAF_INO_LICENSE_PUBLIC_KEY_PATH','')
 
 INSTALLED_APPS=[
  'django.contrib.admin','django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles',
  'corsheaders','rest_framework','django_filters','drf_spectacular',
  'apps.core','apps.businesses','apps.accounts','apps.catalog','apps.customers','apps.dining','apps.orders','apps.payments','apps.kitchen','apps.inventory',
  'apps.cashier','apps.takeaway','apps.dashboard','apps.suppliers','apps.purchasing','apps.accounting','apps.reports','apps.audit','apps.discounts','apps.workforce',
- 'apps.production','apps.printing','apps.reservations','apps.loyalty','apps.notifications','apps.online_ordering','apps.delivery','apps.giftcards','apps.payment_gateway',
+ 'apps.production','apps.printing','apps.reservations','apps.loyalty','apps.notifications','apps.online_ordering','apps.delivery','apps.giftcards','apps.payment_gateway','apps.operations',
 ]
 MIDDLEWARE=[
  'corsheaders.middleware.CorsMiddleware','django.middleware.security.SecurityMiddleware','whitenoise.middleware.WhiteNoiseMiddleware',
@@ -60,7 +62,7 @@ REST_FRAMEWORK={
  'DEFAULT_AUTHENTICATION_CLASSES':['rest_framework_simplejwt.authentication.JWTAuthentication','rest_framework.authentication.SessionAuthentication'],
  'DEFAULT_FILTER_BACKENDS':['django_filters.rest_framework.DjangoFilterBackend','rest_framework.filters.SearchFilter'],
  'DEFAULT_SCHEMA_CLASS':'drf_spectacular.openapi.AutoSchema',
- 'DEFAULT_THROTTLE_RATES':{'public_menu':'120/min','online_order':'20/min'},
+ 'DEFAULT_THROTTLE_RATES':{'public_menu':'120/min','online_order':'20/min','ops_device':'60/min'},
 }
 SIMPLE_JWT={
  'ACCESS_TOKEN_LIFETIME':timedelta(days=1),
