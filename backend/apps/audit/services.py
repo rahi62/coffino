@@ -1,3 +1,7 @@
+import json
+
+from django.core.serializers.json import DjangoJSONEncoder
+
 from .models import AuditLog
 
 
@@ -23,6 +27,16 @@ def _business_for(*,actor=None,branch=None,entity=None):
     return None
 
 
+def _json_safe(value):
+    """Normalize audit snapshots before JSONField persistence.
+
+    DRF serializer payloads may legitimately contain Decimal/UUID/date objects. Django's
+    JSONField uses a strict JSON encoder by default, so convert them at the audit boundary
+    instead of forcing every domain caller to remember serialization details.
+    """
+    return json.loads(json.dumps(value or {},cls=DjangoJSONEncoder))
+
+
 def log_action(*,actor=None,branch=None,action,entity=None,description='',before=None,after=None,metadata=None,request=None):
     ip=None
     if request:
@@ -33,5 +47,5 @@ def log_action(*,actor=None,branch=None,action,entity=None,description='',before
         actor=actor,branch=resolved_branch,action=action,
         entity_type=entity.__class__.__name__ if entity else '',
         entity_id=str(getattr(entity,'pk','')) if entity else '',
-        description=description,before=before or {},after=after or {},metadata=metadata or {},ip_address=ip
+        description=description,before=_json_safe(before),after=_json_safe(after),metadata=_json_safe(metadata),ip_address=ip
     )
