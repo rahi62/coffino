@@ -142,10 +142,10 @@ def _gateway_health(branch, enabled, *, live=False):
     if not config.is_active:
         return _row('payment_gateway', 'درگاه پرداخت', 'error', 'درگاه پرداخت غیرفعال است.')
     details = {'provider': config.provider, 'sandbox': bool(config.sandbox)}
-    if config.provider == PaymentGatewayConfig.Provider.MOCK:
-        return _row('payment_gateway', 'درگاه پرداخت', 'ok', 'درگاه Mock برای تست داخلی Cafino آماده است.', mode='simulation', details=details)
     if not config.callback_base_url:
         return _row('payment_gateway', 'درگاه پرداخت', 'error', 'Callback Base URL تنظیم نشده است.', details=details)
+    if config.provider == PaymentGatewayConfig.Provider.MOCK:
+        return _row('payment_gateway', 'درگاه پرداخت', 'ok', 'درگاه Mock و Callback برای تست داخلی Cafino آماده هستند.', mode='simulation', details=details)
     if config.provider == PaymentGatewayConfig.Provider.ZARINPAL:
         try:
             merchant_ready = bool(config.get_merchant_id())
