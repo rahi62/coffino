@@ -7,9 +7,18 @@ function normalizeUpdateUrl(value){
   if(url.protocol!=="https:")return"";
   return url.toString().replace(/\/$/,"");
 }
-function createUpdater({url,logger=null}={}){
-  const normalized=normalizeUpdateUrl(url);if(!normalized)return null;
-  const updater=new NsisUpdater({provider:"generic",url:normalized});
+function normalizeUpdateChannel(value){
+  const channel=String(value||"latest").trim().toLowerCase();
+  if(channel==="stable"||channel==="latest")return"latest";
+  if(channel==="beta")return"beta";
+  return"";
+}
+function createUpdater({url,channel="latest",logger=null}={}){
+  const normalized=normalizeUpdateUrl(url);
+  const normalizedChannel=normalizeUpdateChannel(channel);
+  if(!normalized||!normalizedChannel)return null;
+  const updater=new NsisUpdater({provider:"generic",url:normalized,channel:normalizedChannel});
+  updater.channel=normalizedChannel;
   updater.autoDownload=false;
   updater.autoInstallOnAppQuit=false;
   updater.allowDowngrade=false;
@@ -18,4 +27,4 @@ function createUpdater({url,logger=null}={}){
 }
 function updaterStatus(updater,extra={}){return{enabled:!!updater,...extra};}
 
-module.exports={normalizeUpdateUrl,createUpdater,updaterStatus};
+module.exports={normalizeUpdateUrl,normalizeUpdateChannel,createUpdater,updaterStatus};
