@@ -59,8 +59,36 @@ jobs:
       - run: npm install
       - run: node --check src/main.js
       - run: node --check src/preload.js
+      - run: node --check src/entry.js
+      - run: node --check src/release-runtime.js
+      - run: node --check src/release-ops.js
+      - run: node --check src/offline-license.js
+      - run: node --check src/updater.js
       - run: node --check src/device-adapters.js
-      - run: node src/device-adapters.test.js
+      - run: npm run test:release
+
+  installer-contract:
+    runs-on: windows-latest
+    defaults: {run: {working-directory: electron}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: npm install
+      - shell: pwsh
+        run: |
+          New-Item release-resources/backend -ItemType Directory -Force | Out-Null
+          New-Item release-resources/frontend -ItemType Directory -Force | Out-Null
+          New-Item release-resources/config -ItemType Directory -Force | Out-Null
+          Set-Content release-resources/backend/cafino-backend.exe "ci-stub"
+          Set-Content release-resources/frontend/server.js "console.log('ci-stub')"
+          Set-Content release-resources/config/release-config.json '{"updateUrl":"","enforceLicense":false,"licensePublicKey":"","backupIntervalHours":24,"backupRetentionCount":14,"backupMaxAgeDays":60}'
+      - run: npx electron-builder --config electron-builder.config.cjs --win nsis --publish never
+      - shell: pwsh
+        run: |
+          $installer=Get-ChildItem release -Filter "Cafino-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer was not produced" }
+          Write-Host "Installer contract: $($installer.Name) $($installer.Length) bytes"
 
   static-release-gate:
     runs-on: ubuntu-latest
@@ -71,3 +99,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: "22"}
       - run: python scripts/release-check.py
+      - run: node scripts/release-contract.js
