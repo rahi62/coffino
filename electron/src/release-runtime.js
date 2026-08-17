@@ -57,21 +57,22 @@ function currentLicenseStatus(){
   const verification=license.verifyLicenseDocument(doc,key,machine_hash);
   return{enforced:!!releaseConfig?.enforceLicense,installed:!!doc,machine_hash,request_code:license.requestCode({machine_hash,version:app.getVersion()}),...verification};
 }
-async function importLicenseInteractive(){
-  const selected=await dialog.showOpenDialog({title:"Import Cafino License",properties:["openFile"],filters:[{name:"Cafino License",extensions:["json","license"]}]});
-  if(selected.canceled||!selected.filePaths[0])return{ok:false,canceled:true};
-  let doc;try{doc=JSON.parse(fs.readFileSync(selected.filePaths[0],"utf8"))}catch{return{ok:false,reason:"invalid_json"}};
+function importLicenseSync(){
+  const files=dialog.showOpenDialogSync({title:"Import Cafino License",properties:["openFile"],filters:[{name:"Cafino License",extensions:["json","license"]}]});
+  if(!files||!files[0])return{ok:false,canceled:true};
+  let doc;try{doc=JSON.parse(fs.readFileSync(files[0],"utf8"))}catch{return{ok:false,reason:"invalid_json"}};
   const status=license.verifyLicenseDocument(doc,publicKeyPem(),license.machineHash(machineIdentity()));if(!status.ok)return status;
   license.saveLicense(licenseFile(),doc);return currentLicenseStatus();
 }
-async function enforceLicense(){
+async function importLicenseInteractive(){return importLicenseSync();}
+function enforceLicenseSync(){
   if(!releaseConfig.enforceLicense)return true;
   for(;;){
     const status=currentLicenseStatus();if(status.ok)return true;
-    const result=await dialog.showMessageBox({type:"warning",title:"Cafino License",message:"لایسنس معتبر Cafino Local روی این دستگاه نصب نیست.",detail:`وضعیت: ${status.reason||"unknown"}\nRequest Code: ${status.request_code}`,buttons:["Import License","Copy Request Code","Exit"],defaultId:0,cancelId:2,noLink:true});
-    if(result.response===0){const imported=await importLicenseInteractive();if(imported.ok)return true;continue;}
-    if(result.response===1){clipboard.writeText(status.request_code);continue;}
-    app.quit();return false;
+    const response=dialog.showMessageBoxSync({type:"warning",title:"Cafino License",message:"لایسنس معتبر Cafino Local روی این دستگاه نصب نیست.",detail:`وضعیت: ${status.reason||"unknown"}\nRequest Code: ${status.request_code}`,buttons:["Import License","Copy Request Code","Exit"],defaultId:0,cancelId:2,noLink:true});
+    if(response===0){const imported=importLicenseSync();if(imported.ok)return true;continue;}
+    if(response===1){clipboard.writeText(status.request_code);continue;}
+    app.exit(0);return false;
   }
 }
 function backupPolicy(){return{keepCount:releaseConfig.backupRetentionCount,maxAgeDays:releaseConfig.backupMaxAgeDays};}
@@ -125,13 +126,13 @@ function registerIpc(){
   ipcMain.handle("update:install",async()=>installDownloadedUpdate());
 }
 function install(){
-  app.whenReady().then(async()=>{
+  app.on("ready",()=>{
     releaseConfig=loadConfig();registerIpc();
-    const licensed=await enforceLicense();if(!licensed)return;
+    if(!enforceLicenseSync())return;
     autoBackup(false);scheduleTimer=setInterval(()=>autoBackup(false),60*60*1000);
     initUpdater();setTimeout(()=>checkUpdate(),30000);setTimeout(()=>finalizePendingUpdate(),5000);
   });
   app.on("before-quit",()=>{if(scheduleTimer)clearInterval(scheduleTimer)});
 }
 
-module.exports={install,loadConfig,currentLicenseStatus,autoBackup,prepareUpdate};
+module.exports={install,loadConfig,currentLicenseStatus,autoBackup,prepareUpdate,enforceLicenseSync};
