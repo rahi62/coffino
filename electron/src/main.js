@@ -90,7 +90,8 @@ function restore(source){
   const parsed=parseCliResult(r,"Restore failed");
   startBackend();
   if(!parsed.ok)return{...parsed,emergency};
-  return{...parsed,ok:true,emergency};
+  const verified=parsed.restored||{};
+  return{...parsed,...verified,ok:true,emergency};
 }
 function systemPreflight(){
   const checks=[];const push=(key,status,message,details={})=>checks.push({key,status,message,details});
@@ -100,7 +101,14 @@ function systemPreflight(){
   }catch(e){push("data_dir","error","مسیر داده Cafino قابل نوشتن نیست.",{error:String(e)})}
   const runtime=app.isPackaged?packagedBackend():devPython();push("backend_runtime",fs.existsSync(runtime)?"ok":"error",fs.existsSync(runtime)?"Runtime بک‌اند موجود است.":"Runtime بک‌اند پیدا نشد.",{path:runtime});
   if(app.isPackaged){const server=path.join(process.resourcesPath,"frontend","server.js");push("frontend_runtime",fs.existsSync(server)?"ok":"error",fs.existsSync(server)?"Runtime فرانت‌اند موجود است.":"Frontend server.js در package پیدا نشد.",{path:server})}else push("frontend_runtime","ok","Frontend در حالت توسعه توسط Next dev server اجرا می‌شود.");
-  push("database",fs.existsSync(currentDb)?"ok":"warning",fs.existsSync(currentDb)?"دیتابیس Local موجود است.":"دیتابیس هنوز ایجاد نشده است؛ اولین اجرای Backend آن را می‌سازد.",{path:currentDb});
+  if(fs.existsSync(currentDb)){
+    push("database","ok","دیتابیس Local موجود است.",{path:currentDb});
+    const drill=parseCliResult(localRuntimeExec(["--drill-backup",dataDir()],{sync:true}),"Backup/restore drill failed");
+    push("backup_restore_drill",drill.ok?"ok":"error",drill.ok?"Backup → Restore موقت با Verify کامل پاس شد.":(drill.error||"Backup/Restore drill ناموفق بود."),{stage:drill.stage||"",verified_at:drill.verified_at||"",source_sha256:drill.source_sha256||""});
+  }else{
+    push("database","warning","دیتابیس هنوز ایجاد نشده است؛ اولین اجرای Backend آن را می‌سازد.",{path:currentDb});
+    push("backup_restore_drill","warning","تا قبل از ایجاد دیتابیس، Restore Drill قابل اجرا نیست.");
+  }
   try{if(typeof fs.statfsSync==="function"){const stat=fs.statfsSync(dataDir());const free=Number(stat.bavail||stat.bfree||0)*Number(stat.bsize||0);push("disk_space",free>=512*1024*1024?"ok":"warning",`فضای آزاد تقریبی: ${Math.round(free/1024/1024)} MB`,{free_bytes:free})}}catch(e){push("disk_space","warning","اندازه‌گیری فضای آزاد ممکن نشد.",{error:String(e)})}
   return{ok:!checks.some(x=>x.status==="error"),packaged:app.isPackaged,platform:process.platform,version:app.getVersion(),checks,adapters:registryPayload().groups};
 }
@@ -165,7 +173,7 @@ function savedReceiptHtml(p){
     customer,
     items:'<table><thead><tr><th>شرح</th><th>تعداد</th><th>مبلغ</th></tr></thead><tbody>'+items+"</tbody></table>",
     summary,
-    payment:payments?'<div class="row"><div>'+payments+"</div></div>':"",
+    payment:payments?'<div class="row"><div>'+payments+"</div></div>":"",
     barcode:'<div class="barcode">'+esc(p.order_number)+"</div>",
     footer,
   };
