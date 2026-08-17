@@ -58,7 +58,7 @@ urlpatterns=[
     path("purchases/create/",create_multi_purchase),path("reports/financial/",financial_report),
     path("approvals/request/",request_approval),path("daily-close/",daily_close),
     path("reports/sales/",sales_reports),path("reports/food-cost/",food_cost),path("reports/kpi/",kpi_report),
-    path("settings/context/",settings_context),path("settings/users/create/",settings_user_create),path("settings/users/<int:user_id>/password/",settings_user_password),path("permissions/me/",permissions_me),path("permissions/matrix/",permission_matrix),
+    path("settings/context/",settings_context),path("settings/readiness/",settings_readiness),path("settings/users/create/",settings_user_create),path("settings/users/<int:user_id>/password/",settings_user_password),path("permissions/me/",permissions_me),path("permissions/matrix/",permission_matrix),
     path("manager-pin/set/",manager_pin_set),path("manager-override/",manager_override),
     path("attendance/clock-in/",attendance_clock_in),path("attendance/clock-out/",attendance_clock_out),
     path("waste/create/",waste_create),path("dashboard/branches/",branches_dashboard),

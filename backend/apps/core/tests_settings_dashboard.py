@@ -5,6 +5,7 @@ from apps.accounts.models import User
 from apps.audit.models import AuditLog
 from apps.businesses.models import Business,Branch,BusinessModule
 from apps.cashier.models import CashRegister
+from apps.catalog.models import Product
 from apps.dining.models import Hall,Table
 
 
@@ -40,6 +41,33 @@ class SettingsDashboardTests(TestCase):
         response=self.api_client(self.waiter).get('/api/v1/settings/context/')
         self.assertEqual(response.status_code,403)
 
+    def test_operational_user_cannot_open_settings_readiness(self):
+        response=self.api_client(self.waiter).get('/api/v1/settings/readiness/')
+        self.assertEqual(response.status_code,403)
+
+    def test_readiness_tracks_missing_and_completed_pos_setup(self):
+        BusinessModule.objects.create(business=self.business,key='POS',enabled=True)
+        client=self.api_client(self.owner)
+
+        first=client.get('/api/v1/settings/readiness/')
+        self.assertEqual(first.status_code,200)
+        branch=first.json()['branches'][0]
+        checks={row['key']:row for row in branch['checks']}
+        self.assertEqual(checks['pos_register']['status'],'missing')
+        self.assertEqual(checks['catalog_products']['status'],'missing')
+        first_score=first.json()['overall']['score']
+
+        CashRegister.objects.create(branch=self.branch,name='Main register',is_active=True)
+        Product.objects.create(branch=self.branch,name='Espresso',price=100000,is_available=True)
+
+        second=client.get('/api/v1/settings/readiness/')
+        self.assertEqual(second.status_code,200)
+        branch=second.json()['branches'][0]
+        checks={row['key']:row for row in branch['checks']}
+        self.assertEqual(checks['pos_register']['status'],'done')
+        self.assertEqual(checks['catalog_products']['status'],'done')
+        self.assertGreater(second.json()['overall']['score'],first_score)
+
     def test_waiter_can_operate_table_but_cannot_reconfigure_it(self):
         client=self.api_client(self.waiter)
         patch=client.patch(f'/api/v1/tables/{self.table.id}/',{'capacity':8},format='json')
@@ -49,7 +77,6 @@ class SettingsDashboardTests(TestCase):
 
     def test_disabled_module_gates_operational_permission_but_not_settings(self):
         BusinessModule.objects.create(business=self.business,key='DINE_IN',enabled=False)
-        # Force fresh authenticated user objects so the permission cache is empty.
         waiter=User.objects.get(pk=self.waiter.pk)
         client=self.api_client(waiter)
         table_response=client.get('/api/v1/tables/')
