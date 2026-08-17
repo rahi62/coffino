@@ -4,7 +4,7 @@ import json
 import os
 import re
 import secrets
-from datetime import datetime, timezone as dt_timezone
+from datetime import timezone as dt_timezone
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -24,7 +24,7 @@ def canonicalize(value):
     if isinstance(value,list):
         return '['+','.join(canonicalize(x) for x in value)+']'
     if isinstance(value,dict):
-        return '{'+','.join(json.dumps(str(k),ensure_ascii=False)+':'+canonicalize(value[k]) for k in sorted(value))+ '}'
+        return '{'+','.join(json.dumps(str(k),ensure_ascii=False)+':'+canonicalize(value[k]) for k in sorted(value))+'}'
     return json.dumps(value,ensure_ascii=False,separators=(',',':'))
 
 
@@ -120,7 +120,7 @@ def register_device(*,document,machine_hash,installation_id,current_version='',c
     business,branch=_signed_business_assignment(payload)
     defaults={
         'installation_id':installation_uuid,
-        'token_hash':'0'*64,
+        'token_hash':secrets.token_hex(32),
         'customer_label':str(payload.get('customer') or '')[:160],
         'business':business,
         'branch':branch,
@@ -176,35 +176,19 @@ def rollout_bucket(installation_id,target_version):
 def policy_for_device(device):
     policy=ReleasePolicy.objects.filter(channel=device.release_channel).first()
     if not policy:
-        return {
-            'managed':False,'channel':device.release_channel,'update_allowed':True,
-            'current_blocked':False,'must_update':False,'core_operations_allowed':True,
-            'remote_commands_allowed':False,
-        }
+        return {'managed':False,'channel':device.release_channel,'update_allowed':True,'current_blocked':False,'must_update':False,'core_operations_allowed':True,'remote_commands_allowed':False}
     blocked=[str(x) for x in (policy.blocked_versions or []) if isinstance(x,(str,int,float))][:100]
     current_blocked=device.current_version in blocked
     below_min=bool(policy.minimum_version and version_lt(device.current_version,policy.minimum_version))
     required_after=bool(policy.required_after and policy.required_after<=timezone.now())
     must_update=current_blocked or below_min or required_after
     eligible=rollout_bucket(device.installation_id,policy.target_version)<int(policy.rollout_percent or 0) if policy.target_version else False
-    update_allowed=bool(
-        policy.target_version and policy.target_version!=device.current_version and not policy.paused and (must_update or eligible)
-    )
+    update_allowed=bool(policy.target_version and policy.target_version!=device.current_version and not policy.paused and (must_update or eligible))
     return {
-        'managed':True,
-        'channel':policy.channel,
-        'target_version':policy.target_version,
-        'minimum_version':policy.minimum_version,
-        'rollback_version':policy.rollback_version,
-        'rollout_percent':policy.rollout_percent,
-        'rollout_bucket':rollout_bucket(device.installation_id,policy.target_version) if policy.target_version else None,
-        'paused':policy.paused,
-        'update_allowed':update_allowed,
-        'must_update':must_update,
-        'current_blocked':current_blocked,
-        'core_operations_allowed':True,
-        'remote_commands_allowed':False,
-        'advisory_message':policy.advisory_message,
+        'managed':True,'channel':policy.channel,'target_version':policy.target_version,'minimum_version':policy.minimum_version,'rollback_version':policy.rollback_version,
+        'rollout_percent':policy.rollout_percent,'rollout_bucket':rollout_bucket(device.installation_id,policy.target_version) if policy.target_version else None,
+        'paused':policy.paused,'update_allowed':update_allowed,'must_update':must_update,'current_blocked':current_blocked,
+        'core_operations_allowed':True,'remote_commands_allowed':False,'advisory_message':policy.advisory_message,
     }
 
 
