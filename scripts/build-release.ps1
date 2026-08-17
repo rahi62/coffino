@@ -68,6 +68,7 @@ Set-Location $frontend
 $env:NEXT_PUBLIC_API_URL="http://127.0.0.1:8000/api/v1"
 $env:NEXT_PUBLIC_API_ROOT="http://127.0.0.1:8000"
 npm install
+npm audit --omit=dev --audit-level=high
 npm run build
 New-Item "$electron\release-resources\frontend" -ItemType Directory -Force | Out-Null
 Copy-Item ".next\standalone\*" "$electron\release-resources\frontend" -Recurse -Force
@@ -94,6 +95,7 @@ $env:CAF_INO_ALLOW_UNSIGNED=if($AllowUnsigned){"1"}else{"0"}
 $env:CAF_INO_UPDATE_URL=$updateUrl
 $env:CAF_INO_UPDATE_CHANNEL=$updateChannel
 npm install
+npm audit --omit=dev --audit-level=high
 npm run test:release
 if($Production){
   npx --no-install electron-builder --config electron-builder.config.cjs --win nsis --publish always
