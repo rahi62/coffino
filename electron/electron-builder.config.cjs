@@ -1,9 +1,9 @@
-const production=process.env.CAFINO_PRODUCTION_BUILD==="1";
-const allowUnsigned=process.env.CAFINO_ALLOW_UNSIGNED==="1";
-const updateUrl=String(process.env.CAFINO_UPDATE_URL||"").trim();
+const production=process.env.CAF_INO_PRODUCTION_BUILD==="1";
+const allowUnsigned=process.env.CAF_INO_ALLOW_UNSIGNED==="1";
+const updateUrl=String(process.env.CAF_INO_UPDATE_URL||"").trim();
 
-if(production&&!updateUrl)throw new Error("CAFINO_UPDATE_URL is required for production build");
-if(production&&!/^https:\/\//i.test(updateUrl))throw new Error("CAFINO_UPDATE_URL must use HTTPS");
+if(production&&!updateUrl)throw new Error("CAF_INO_UPDATE_URL is required for production build");
+if(production&&!/^https:\/\//i.test(updateUrl))throw new Error("CAF_INO_UPDATE_URL must use HTTPS");
 
 module.exports={
   appId:"com.digitalafarin.cafino",
