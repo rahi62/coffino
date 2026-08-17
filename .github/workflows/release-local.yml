@@ -1,0 +1,73 @@
+name: Cafino Local Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer release version, e.g. 1.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-signed-installer:
+    runs-on: windows-latest
+    env:
+      CAF_INO_UPDATE_URL: ${{ secrets.CAF_INO_UPDATE_URL }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate version
+        shell: pwsh
+        run: |
+          if ("${{ inputs.version }}" -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid SemVer version" }
+
+      - name: Prepare Python release environment
+        shell: pwsh
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/Scripts/python.exe -m pip install --upgrade pip
+          backend/.venv/Scripts/pip.exe install -r backend/requirements-dev.txt
+
+      - name: Set desktop version
+        working-directory: electron
+        shell: pwsh
+        run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Materialize public license key
+        shell: pwsh
+        env:
+          CAF_INO_LICENSE_PUBLIC_KEY_PEM: ${{ secrets.CAF_INO_LICENSE_PUBLIC_KEY_PEM }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CAF_INO_LICENSE_PUBLIC_KEY_PEM)) { throw "CAF_INO_LICENSE_PUBLIC_KEY_PEM secret is required" }
+          New-Item release-secrets -ItemType Directory -Force | Out-Null
+          $keyPath=(Resolve-Path release-secrets).Path + "\license-public-key.pem"
+          $utf8=New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($keyPath,$env:CAF_INO_LICENSE_PUBLIC_KEY_PEM,$utf8)
+          "CAF_INO_LICENSE_PUBLIC_KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build signed production release
+        shell: powershell
+        run: .\scripts\build-release.ps1 -Production
+
+      - name: Upload signed installer bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: cafino-local-${{ inputs.version }}-signed
+          path: |
+            electron/release/Cafino-Setup-*.exe
+            electron/release/*.yml
+            electron/release/*.blockmap
+            electron/release/release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
