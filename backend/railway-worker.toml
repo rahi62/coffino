@@ -3,6 +3,6 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "celery -A config worker -l INFO --concurrency=${CELERY_WORKER_CONCURRENCY:-2}"
+startCommand = "/bin/sh -c 'exec celery -A config worker -l INFO --concurrency=${CELERY_WORKER_CONCURRENCY:-2}'"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
