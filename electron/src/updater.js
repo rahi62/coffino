@@ -8,14 +8,24 @@ function normalizeUpdateUrl(value){
   return url.toString().replace(/\/$/,"");
 }
 function normalizeUpdateChannel(value){
-  const channel=String(value||"latest").trim().toLowerCase();
+  const channel=String(value||"").trim().toLowerCase();
   if(channel==="stable"||channel==="latest")return"latest";
   if(channel==="beta")return"beta";
   return"";
 }
-function createUpdater({url,channel="latest",logger=null}={}){
+function inferUpdateChannel(url,explicit=""){
+  const normalizedExplicit=normalizeUpdateChannel(explicit);
+  if(normalizedExplicit)return normalizedExplicit;
+  const normalizedUrl=normalizeUpdateUrl(url);
+  if(!normalizedUrl)return"";
+  try{
+    const parts=new URL(normalizedUrl).pathname.split("/").filter(Boolean);
+    return parts.at(-1)?.toLowerCase()==="beta"?"beta":"latest";
+  }catch{return""}
+}
+function createUpdater({url,channel="",logger=null}={}){
   const normalized=normalizeUpdateUrl(url);
-  const normalizedChannel=normalizeUpdateChannel(channel);
+  const normalizedChannel=inferUpdateChannel(normalized,channel);
   if(!normalized||!normalizedChannel)return null;
   const updater=new NsisUpdater({provider:"generic",url:normalized,channel:normalizedChannel});
   updater.channel=normalizedChannel;
@@ -27,4 +37,4 @@ function createUpdater({url,channel="latest",logger=null}={}){
 }
 function updaterStatus(updater,extra={}){return{enabled:!!updater,...extra};}
 
-module.exports={normalizeUpdateUrl,normalizeUpdateChannel,createUpdater,updaterStatus};
+module.exports={normalizeUpdateUrl,normalizeUpdateChannel,inferUpdateChannel,createUpdater,updaterStatus};
