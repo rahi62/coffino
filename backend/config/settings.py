@@ -1,7 +1,9 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+
 from corsheaders.defaults import default_headers
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 import dj_database_url
 
@@ -11,10 +13,27 @@ if not env_file.is_absolute():
     env_file=(BASE_DIR/env_file).resolve()
 load_dotenv(env_file)
 
+def _csv(name,default=''):
+    return [x.strip() for x in os.getenv(name,default).split(',') if x.strip()]
+
+def _append_unique(rows,*values):
+    for value in values:
+        value=str(value or '').strip()
+        if value and value not in rows:
+            rows.append(value)
+    return rows
+
 SECRET_KEY=os.getenv('DJANGO_SECRET_KEY','dev-secret-change-me')
 DEBUG=os.getenv('DJANGO_DEBUG','1')=='1'
-ENVIRONMENT=os.getenv('CAF_INO_ENV','local')
-ALLOWED_HOSTS=[x.strip() for x in os.getenv('DJANGO_ALLOWED_HOSTS','127.0.0.1,localhost').split(',') if x.strip()]
+ENVIRONMENT=os.getenv('CAF_INO_ENV','local').strip().lower()
+ALLOWED_HOSTS=_csv('DJANGO_ALLOWED_HOSTS','127.0.0.1,localhost')
+railway_domain=os.getenv('RAILWAY_PUBLIC_DOMAIN','').strip()
+if railway_domain:
+    _append_unique(ALLOWED_HOSTS,railway_domain)
+
+if not DEBUG and ENVIRONMENT in {'saas','dedicated'} and SECRET_KEY=='dev-secret-change-me':
+    raise ImproperlyConfigured('DJANGO_SECRET_KEY must be configured for public Cafino deployments.')
+
 CAF_INO_LICENSE_PUBLIC_KEY_PEM=os.getenv('CAF_INO_LICENSE_PUBLIC_KEY_PEM','')
 CAF_INO_LICENSE_PUBLIC_KEY_PATH=os.getenv('CAF_INO_LICENSE_PUBLIC_KEY_PATH','')
 CAF_INO_OPS_EVENT_RETENTION_DAYS=int(os.getenv('CAF_INO_OPS_EVENT_RETENTION_DAYS','90'))
@@ -37,7 +56,11 @@ TEMPLATES=[{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[
 WSGI_APPLICATION='config.wsgi.application';ASGI_APPLICATION='config.asgi.application'
 
 default_db=f"sqlite:///{BASE_DIR/'db.sqlite3'}"
-DATABASES={'default':dj_database_url.config(default=os.getenv('DATABASE_URL',default_db),conn_max_age=60,conn_health_checks=True)}
+DATABASES={'default':dj_database_url.config(
+    default=os.getenv('DATABASE_URL',default_db),
+    conn_max_age=int(os.getenv('DJANGO_DB_CONN_MAX_AGE','60')),
+    conn_health_checks=True,
+)}
 
 AUTH_USER_MODEL='accounts.User'
 LANGUAGE_CODE='fa'
@@ -50,9 +73,16 @@ STATIC_URL='/static/';STATIC_ROOT=BASE_DIR/'staticfiles'
 STORAGES={'staticfiles':{'BACKEND':'whitenoise.storage.CompressedManifestStaticFilesStorage'}}
 DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS=[x.strip() for x in os.getenv('CORS_ALLOWED_ORIGINS','http://127.0.0.1:3000,http://localhost:3000').split(',') if x.strip()]
+CORS_ALLOWED_ORIGINS=_csv('CORS_ALLOWED_ORIGINS','http://127.0.0.1:3000,http://localhost:3000')
+CSRF_TRUSTED_ORIGINS=_csv('CSRF_TRUSTED_ORIGINS','')
+frontend_origins=_csv('CAF_INO_FRONTEND_ORIGIN','')
+for origin in frontend_origins:
+    if not (origin.startswith('https://') or (DEBUG and origin.startswith('http://'))):
+        raise ImproperlyConfigured('CAF_INO_FRONTEND_ORIGIN must use HTTPS outside DEBUG mode.')
+    _append_unique(CORS_ALLOWED_ORIGINS,origin)
+    _append_unique(CSRF_TRUSTED_ORIGINS,origin)
+
 CORS_ALLOW_HEADERS=[*default_headers,'idempotency-key','x-cafino-override']
-CSRF_TRUSTED_ORIGINS=[x.strip() for x in os.getenv('CSRF_TRUSTED_ORIGINS','').split(',') if x.strip()]
 SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
 SESSION_COOKIE_SECURE=not DEBUG
 CSRF_COOKIE_SECURE=not DEBUG
@@ -70,7 +100,7 @@ SIMPLE_JWT={
  'ACCESS_TOKEN_LIFETIME':timedelta(days=1),
  'REFRESH_TOKEN_LIFETIME':timedelta(days=1),
 }
-CELERY_BROKER_URL=os.getenv('CELERY_BROKER_URL','redis://127.0.0.1:6379/0')
+CELERY_BROKER_URL=os.getenv('CELERY_BROKER_URL') or os.getenv('REDIS_URL') or 'redis://127.0.0.1:6379/0'
 CELERY_TASK_SERIALIZER='json'
 CELERY_ACCEPT_CONTENT=['json']
 CELERY_RESULT_SERIALIZER='json'
