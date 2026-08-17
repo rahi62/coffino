@@ -7,6 +7,7 @@ class DeviceSerializer(serializers.ModelSerializer):
     business_name=serializers.CharField(source='business.name',read_only=True,allow_null=True)
     branch_name=serializers.CharField(source='branch.name',read_only=True,allow_null=True)
     online=serializers.SerializerMethodField()
+    machine_hash=serializers.SerializerMethodField()
 
     class Meta:
         model=DeviceInstallation
@@ -21,6 +22,10 @@ class DeviceSerializer(serializers.ModelSerializer):
     def get_online(self,obj):
         from django.utils import timezone
         return bool(obj.last_seen_at and (timezone.now()-obj.last_seen_at).total_seconds()<=15*60)
+
+    def get_machine_hash(self,obj):
+        value=str(obj.machine_hash or '')
+        return f'{value[:12]}…' if len(value)>12 else value
 
 
 class ReleasePolicySerializer(serializers.ModelSerializer):
