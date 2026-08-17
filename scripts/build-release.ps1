@@ -38,6 +38,7 @@ if ($Production) {
 }
 
 & "$backend\.venv\Scripts\python.exe" "$root\scripts\release-check.py"
+node "$root\scripts\release-contract.js"
 Set-Location $backend
 & ".\.venv\Scripts\python.exe" manage.py makemigrations --check --dry-run
 & ".\.venv\Scripts\python.exe" manage.py migrate
