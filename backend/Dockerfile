@@ -8,4 +8,5 @@ RUN addgroup --system cafino && adduser --system --ingroup cafino cafino \
     && python manage.py collectstatic --noinput \
     && chown -R cafino:cafino /app
 USER cafino
-CMD ["gunicorn","config.wsgi:application","--bind","0.0.0.0:8000","--workers","3","--timeout","60"]
+EXPOSE 8000
+CMD ["/bin/sh","-c","exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-60} --access-logfile - --error-logfile -"]
