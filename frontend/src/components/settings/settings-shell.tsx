@@ -6,7 +6,7 @@ import {SettingsProvider,useSettings} from "./settings-context";
 
 const nav=[
  ["/settings","نمای کلی",Settings2,null],
- ["/settings/onboarding","راه‌اندازی هوشمند",CheckCircle2,"settings.manage"],
+ ["/settings/onboarding","راه‌اندازی هوشمند",CheckCircle2,"business.manage"],
  ["/settings/business","کسب‌وکار و ماژول‌ها",Building2,"business.manage"],
  ["/settings/branches","شعب و صندوق‌ها",Store,"branches.manage"],
  ["/settings/dining","سالن و تعریف میز",Armchair,"settings.manage"],
