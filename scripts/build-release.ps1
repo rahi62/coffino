@@ -1,6 +1,7 @@
 param(
   [switch]$Production,
-  [switch]$AllowUnsigned
+  [switch]$AllowUnsigned,
+  [ValidateSet("stable","beta")][string]$Channel="stable"
 )
 
 $ErrorActionPreference="Stop"
@@ -64,6 +65,7 @@ if (Test-Path "public") { Copy-Item "public" "$electron\release-resources\fronte
 New-Item "$electron\release-resources\config" -ItemType Directory -Force | Out-Null
 $config=[ordered]@{
   updateUrl=$updateUrl
+  releaseChannel=$Channel
   enforceLicense=[bool]$Production
   licensePublicKey=if($Production){"config/license-public-key.pem"}else{""}
   backupIntervalHours=[int](Env-Or "CAF_INO_BACKUP_INTERVAL_HOURS" 24)
@@ -82,11 +84,25 @@ npm run test:release
 npm run build
 
 $releaseDir="$electron\release"
-$manifest=[ordered]@{created_at=(Get-Date).ToUniversalTime().ToString("o");production=[bool]$Production;unsigned=[bool]$AllowUnsigned;artifacts=@()}
+$version=(Get-Content "$electron\package.json" -Raw | ConvertFrom-Json).version
+$manifest=[ordered]@{
+  schema=2
+  created_at=(Get-Date).ToUniversalTime().ToString("o")
+  version=$version
+  channel=$Channel
+  production=[bool]$Production
+  unsigned=[bool]$AllowUnsigned
+  update_url=$updateUrl
+  artifacts=@()
+}
 Get-ChildItem $releaseDir -File | Where-Object { $_.Extension -in '.exe','.yml','.blockmap' } | ForEach-Object {
   $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   $manifest.artifacts+=@{name=$_.Name;size=$_.Length;sha256=$hash}
 }
 Write-Utf8NoBom "$releaseDir\release-manifest.json" ($manifest|ConvertTo-Json -Depth 6)
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\prepare-update-feed.ps1" -ReleaseDir $releaseDir -Channel $Channel
+
 Write-Host "Release created under electron\release" -ForegroundColor Green
+Write-Host "Update feed prepared under electron\release\publish\$Channel" -ForegroundColor Green
 if($Production -and !$AllowUnsigned){Write-Host "Production signing gate was required." -ForegroundColor Green}
