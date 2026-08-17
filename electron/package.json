@@ -2,6 +2,7 @@
   "name": "cafino-electron",
   "version": "1.1.0",
   "private": true,
+  "author": "DigitalAfarin",
   "main": "src/entry.js",
   "scripts": {
     "dev": "electron .",
@@ -9,10 +10,10 @@
     "build": "electron-builder --config electron-builder.config.cjs --win nsis --publish never"
   },
   "dependencies": {
-    "electron": "37.2.6",
     "electron-updater": "6.8.9"
   },
   "devDependencies": {
+    "electron": "37.2.6",
     "electron-builder": "26.15.3"
   },
   "description": "Cafino Local Hospitality Management"
