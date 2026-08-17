@@ -2,7 +2,7 @@
   "name": "cafino-electron",
   "version": "1.1.0",
   "private": true,
-  "main": "src/main.js",
+  "main": "src/entry.js",
   "scripts": {
     "dev": "electron .",
     "test:release": "node src/device-adapters.test.js && node src/release-ops.test.js && node src/offline-license.test.js && node src/updater.test.js",
