@@ -11,6 +11,12 @@ from apps.online_ordering.models import OnlineMenuSettings
 from apps.online_ordering.services import ensure_settings
 
 
+ALL_MODULE_KEYS = [
+    'CORE','POS','DINE_IN','TAKEAWAY','KITCHEN_DISPLAY','PAGER','SMS','INVENTORY','RECIPES',
+    'PURCHASING','ACCOUNTING','CUSTOMERS','REPORTING','PRODUCTION','PRINTING','MULTI_BRANCH',
+    'RESERVATION','LOYALTY','ONLINE_ORDERING','NOTIFICATIONS','DELIVERY','GIFT_CARD','PAYMENT_GATEWAY',
+]
+
 PRESETS = {
     'CAFE': {
         'label': 'کافه',
@@ -99,6 +105,28 @@ def _station_code(name, index):
     return (raw or f'STATION_{index}')[:40]
 
 
+def _apply_modules(*, business, preset_modules, replace_modules):
+    enabled = set(preset_modules)
+    if replace_modules:
+        # Permission gating historically treats a missing BusinessModule row as enabled.
+        # A preset replacement therefore needs explicit rows for every known module.
+        for module_key in ALL_MODULE_KEYS:
+            BusinessModule.objects.update_or_create(
+                business=business,
+                key=module_key,
+                defaults={'enabled': module_key == 'CORE' or module_key in enabled},
+            )
+    else:
+        BusinessModule.objects.update_or_create(business=business,key='CORE',defaults={'enabled':True})
+        for module_key in enabled:
+            BusinessModule.objects.update_or_create(
+                business=business,
+                key=module_key,
+                defaults={'enabled': True},
+            )
+    return sorted(enabled)
+
+
 @transaction.atomic
 def apply_onboarding_preset(*, business, actor, payload, request=None):
     business = Business.objects.select_for_update().get(pk=business.pk)
@@ -159,17 +187,11 @@ def apply_onboarding_preset(*, business, actor, payload, request=None):
         branch.save(update_fields=[*sorted(set(branch_fields)), 'updated_at'])
 
     replace_modules = payload.get('replace_modules', True) is not False
-    if replace_modules:
-        BusinessModule.objects.filter(business=business).exclude(key='CORE').update(enabled=False)
-
-    enabled_modules = []
-    for module_key in preset['modules']:
-        BusinessModule.objects.update_or_create(
-            business=business,
-            key=module_key,
-            defaults={'enabled': True},
-        )
-        enabled_modules.append(module_key)
+    enabled_modules = _apply_modules(
+        business=business,
+        preset_modules=preset['modules'],
+        replace_modules=replace_modules,
+    )
 
     created = {'register': False, 'hall': False, 'tables': 0, 'stations': 0, 'online_settings': False}
 
