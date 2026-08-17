@@ -3,6 +3,7 @@ from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .admin_localization import localized_text, localize_admin
+from . import admin_localization_extra  # noqa: F401 - extends runtime localization maps before applying them
 
 admin.site.site_header=localized_text('مدیریت کافینو', 'Cafino Administration')
 admin.site.site_title=localized_text('مدیریت کافینو', 'Cafino Administration')

@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from apps.core.views import *
+from apps.core.api.kitchen_actions import kitchen_ticket_done
 from apps.dashboard.views import dashboard
 
 r=DefaultRouter()
@@ -9,6 +10,7 @@ r.register("categories",CategoryVS);r.register("products",ProductVS);r.register(
 r.register("halls",HallVS);r.register("tables",TableVS);r.register("table-sessions",TableSessionVS)
 r.register("orders",OrderVS);r.register("payments",PaymentVS);r.register("refunds",RefundVS)
 r.register("stations",StationVS);r.register("kitchen-tickets",KitchenTicketVS)
+r.register("ingredient-categories",IngredientCategoryVS,basename="ingredient-category")
 r.register("inventory-items",InventoryItemVS);r.register("stock-movements",StockMovementVS);r.register("recipe-items",RecipeItemVS)
 r.register("pagers",PagerVS);r.register("takeaway-profiles",TakeawayProfileVS)
 r.register("cash-registers",CashRegisterVS);r.register("cash-shifts",CashShiftVS);r.register("cash-movements",CashMovementVS)
@@ -63,6 +65,7 @@ urlpatterns=[
     path("inventory-counts/create/",inventory_count_create),path("stock-transfers/create/",stock_transfer_create),
     path("orders/<int:pk>/settle/",order_settle),path("checkout/preview/",checkout_preview),
     path("orders/<int:pk>/receipt-job/",receipt_job_create),path("orders/<int:pk>/receipt-payload/",receipt_payload),
+    path("kitchen-tickets/<int:pk>/done/",kitchen_ticket_done),
     path("kitchen-tickets/<int:pk>/print-payload/",kitchen_print_payload),path("kitchen-tickets/<int:pk>/print-job/",kitchen_job_create),
     path("orders/<int:pk>/bill-splits/",bill_split_create),path("customers/<int:customer_id>/loyalty/redeem/",loyalty_redeem),path("customers/<int:customer_id>/wallet/credit/",wallet_credit),
     path("notifications/process/",process_notifications_api),path("online/settings/ensure/",online_settings_ensure),path("tables/<int:pk>/qr/ensure/",table_qr_ensure),path("tables/<int:pk>/qr.svg",table_qr_svg),
