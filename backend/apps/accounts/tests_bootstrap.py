@@ -55,7 +55,7 @@ class BootstrapBusinessOwnerTests(TestCase):
         self.assertTrue(user.check_password("Another-Existing-Password-2026!"))
         self.assertIn("OWNER already exists", text)
 
-    def test_rejects_username_owned_by_another_tenant(self):
+    def test_rejects_username_owned_by_another_tenant_without_leaving_business(self):
         other = Business.objects.create(name="Other", deployment_type="SAAS")
         get_user_model().objects.create_user(
             username="pilot-owner",
@@ -72,3 +72,15 @@ class BootstrapBusinessOwnerTests(TestCase):
                     deployment_type="SAAS",
                 )
         self.assertFalse(Business.objects.filter(name="Pilot Cafe").exists())
+
+    def test_rejects_weak_password_and_rolls_back_tenant_creation(self):
+        with patch.dict(os.environ, {"CAF_INO_BOOTSTRAP_OWNER_PASSWORD": "short1"}, clear=False):
+            with self.assertRaises(CommandError):
+                call_command(
+                    "bootstrap_business_owner",
+                    business_name="Weak Cafe",
+                    username="weak-owner",
+                    deployment_type="SAAS",
+                )
+        self.assertFalse(Business.objects.filter(name="Weak Cafe").exists())
+        self.assertFalse(get_user_model().objects.filter(username="weak-owner").exists())
