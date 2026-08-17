@@ -103,3 +103,4 @@ jobs:
         with: {node-version: "22"}
       - run: python scripts/release-check.py
       - run: node scripts/release-contract.js
+      - run: node scripts/railway-contract.js
