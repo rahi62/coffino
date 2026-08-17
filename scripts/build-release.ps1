@@ -27,6 +27,12 @@ if (!(Test-Path "$backend\.venv")) { throw "Run scripts/setup-local.ps1 first." 
 
 $updateUrl=""
 $licensePublicKeyPath=""
+$opsEndpoint=(Env-Or "CAF_INO_OPS_ENDPOINT" "").TrimEnd('/')
+if ($opsEndpoint -and $opsEndpoint -notmatch '^https://') { throw "CAF_INO_OPS_ENDPOINT must use HTTPS." }
+$telemetryEnabled=(Env-Or "CAF_INO_TELEMETRY_ENABLED" "0") -eq "1"
+$heartbeatIntervalMinutes=[int](Env-Or "CAF_INO_OPS_HEARTBEAT_MINUTES" 60)
+if ($heartbeatIntervalMinutes -lt 15) { throw "CAF_INO_OPS_HEARTBEAT_MINUTES must be at least 15." }
+
 if ($Production) {
   $updateUrl=Require-Env "CAF_INO_UPDATE_URL"
   if ($updateUrl -notmatch '^https://') { throw "CAF_INO_UPDATE_URL must use HTTPS." }
@@ -71,6 +77,10 @@ $config=[ordered]@{
   backupIntervalHours=[int](Env-Or "CAF_INO_BACKUP_INTERVAL_HOURS" 24)
   backupRetentionCount=[int](Env-Or "CAF_INO_BACKUP_RETENTION_COUNT" 14)
   backupMaxAgeDays=[int](Env-Or "CAF_INO_BACKUP_MAX_AGE_DAYS" 60)
+  opsEndpoint=$opsEndpoint
+  operationsEnabled=[bool]$opsEndpoint
+  telemetryEnabled=[bool]$telemetryEnabled
+  heartbeatIntervalMinutes=$heartbeatIntervalMinutes
 }
 Write-Utf8NoBom "$electron\release-resources\config\release-config.json" ($config|ConvertTo-Json -Depth 4)
 if ($Production) { Copy-Item $licensePublicKeyPath "$electron\release-resources\config\license-public-key.pem" -Force }
@@ -86,13 +96,15 @@ npm run build
 $releaseDir="$electron\release"
 $version=(Get-Content "$electron\package.json" -Raw | ConvertFrom-Json).version
 $manifest=[ordered]@{
-  schema=2
+  schema=3
   created_at=(Get-Date).ToUniversalTime().ToString("o")
   version=$version
   channel=$Channel
   production=[bool]$Production
   unsigned=[bool]$AllowUnsigned
   update_url=$updateUrl
+  operations_enabled=[bool]$opsEndpoint
+  telemetry_enabled=[bool]$telemetryEnabled
   artifacts=@()
 }
 Get-ChildItem $releaseDir -File | Where-Object { $_.Extension -in '.exe','.yml','.blockmap' } | ForEach-Object {
@@ -105,4 +117,5 @@ Write-Utf8NoBom "$releaseDir\release-manifest.json" ($manifest|ConvertTo-Json -D
 
 Write-Host "Release created under electron\release" -ForegroundColor Green
 Write-Host "Update feed prepared under electron\release\publish\$Channel" -ForegroundColor Green
+if($opsEndpoint){Write-Host "Production Operations endpoint embedded (telemetry=$telemetryEnabled)." -ForegroundColor Green}
 if($Production -and !$AllowUnsigned){Write-Host "Production signing gate was required." -ForegroundColor Green}

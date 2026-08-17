@@ -19,8 +19,13 @@ function runSmokeCheck(){
     result.channel=config.releaseChannel||"stable";
     result.updateUrl=config.updateUrl||"";
     result.enforceLicense=!!config.enforceLicense;
+    result.operationsEnabled=!!config.operationsEnabled;
+    result.telemetryEnabled=!!config.telemetryEnabled;
     result.checks.channel=["stable","beta"].includes(result.channel);
     result.checks.httpsUpdate=!result.updateUrl||result.updateUrl.startsWith("https://");
+    result.checks.operationsEndpoint=!result.operationsEnabled||(typeof config.opsEndpoint==="string"&&config.opsEndpoint.startsWith("https://"));
+    result.checks.telemetryRequiresOperations=!result.telemetryEnabled||result.operationsEnabled;
+    result.checks.heartbeatInterval=Number(config.heartbeatIntervalMinutes||60)>=15;
     if(result.enforceLicense){
       const key=path.join(resources,String(config.licensePublicKey||""));
       result.checks.licensePublicKey=!!config.licensePublicKey&&fs.existsSync(key);

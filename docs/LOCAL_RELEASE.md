@@ -170,6 +170,12 @@ $env:CAF_INO_LICENSE_PRIVATE_KEY_PATH="C:\secure\cafino\license-private-key.pem"
 node scripts/issue-license.js --request "<REQUEST_CODE>" --customer "Cafe Name" --license-id "CAF-000123" --expires "2027-12-31T23:59:59Z" --out "CAF-000123.license"
 ```
 
+Optional signed tenant assignment for the Operations Control Plane:
+
+```powershell
+node scripts/issue-license.js --request "<REQUEST_CODE>" --customer "Cafe Name" --license-id "CAF-000123" --business-id 12 --branch-id 37 --out "CAF-000123.license"
+```
+
 4. Transfer only the resulting `.license` file to the customer device.
 5. Import it from the native startup dialog or Settings → Release & License.
 
@@ -196,12 +202,13 @@ Backups use the verified SQLite flow and are pruned only after a successful back
 ## 9. Safe update flow
 
 1. Cafino checks only its configured channel HTTPS endpoint.
-2. Operator downloads the update from Settings → Release & License.
-3. Before installation, Cafino creates and verifies a `pre-update` database backup.
-4. An update recovery journal records current version, target version, backup path and backup hash.
-5. The NSIS updater installs and restarts Cafino.
-6. New runtime must pass backend health verification.
-7. If health verification fails, the recovery journal is marked `recovery_required` and the pre-update backup is preserved.
+2. When Production Operations is configured, the release policy first determines whether this installation is eligible for the target rollout.
+3. Operator downloads the update from Settings → Release & License.
+4. Before installation, Cafino creates and verifies a `pre-update` database backup.
+5. An update recovery journal records current version, target version, backup path and backup hash.
+6. The NSIS updater installs and restarts Cafino.
+7. New runtime must pass backend health verification.
+8. If health verification fails, the recovery journal is marked `recovery_required` and the pre-update backup is preserved.
 
 ## 10. Rollback boundary
 
@@ -232,3 +239,37 @@ A production release should not be delivered unless:
 - previous signed installer is retained for rollback.
 
 The GitHub runner smoke test proves packaging/installability. It does not replace a pilot rollout on one real customer device with the actual printer/POS/pager hardware profile.
+
+## 12. Optional Production Operations Control Plane
+
+Production Operations is optional. Cafino Local remains operational without it.
+
+To embed a Control Plane endpoint in a Local build:
+
+```powershell
+$env:CAF_INO_OPS_ENDPOINT="https://control.example.com/api/ops/v1"
+$env:CAF_INO_TELEMETRY_ENABLED="0"
+$env:CAF_INO_OPS_HEARTBEAT_MINUTES="60"
+.\scripts\build-release.ps1 -Production -Channel stable
+```
+
+Rules:
+
+- `CAF_INO_OPS_ENDPOINT` must use HTTPS if provided.
+- `CAF_INO_TELEMETRY_ENABLED` defaults to `0`; event/crash telemetry is opt-in.
+- heartbeat interval cannot be lower than 15 minutes.
+- heartbeat and release-policy synchronization contain operational metadata only.
+- no order/customer/phone/invoice/raw DB content is sent.
+- crash reporting sends a fingerprint, not raw exception text or stack trace.
+- remote arbitrary commands are not supported.
+- Release Policy can pause rollout or mark a version unsafe but cannot remotely stop POS/core Local operations.
+
+GitHub Actions supports these optional repository settings:
+
+- secret `CAF_INO_OPS_ENDPOINT`
+- variable `CAF_INO_TELEMETRY_ENABLED` (`0` or `1`)
+- variable `CAF_INO_OPS_HEARTBEAT_MINUTES` (minimum `15`)
+
+The central Control Plane deployment must configure the same Cafino Ed25519 **public** license key so first-time device registration can verify the signed Local license. The private key stays offline.
+
+Full protocol, privacy, retention and rollout details are documented in `docs/PHASE_PRODUCTION_OPERATIONS.md`.

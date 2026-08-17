@@ -66,6 +66,7 @@ jobs:
       - run: node --check src/offline-license.js
       - run: node --check src/updater.js
       - run: node --check src/device-adapters.js
+      - run: node --check src/ops-client.js
       - run: npm run test:release
 
   installer-contract:
@@ -83,7 +84,7 @@ jobs:
           New-Item release-resources/config -ItemType Directory -Force | Out-Null
           Set-Content release-resources/backend/cafino-backend.exe "ci-stub"
           Set-Content release-resources/frontend/server.js "console.log('ci-stub')"
-          Set-Content release-resources/config/release-config.json '{"updateUrl":"","releaseChannel":"stable","enforceLicense":false,"licensePublicKey":"","backupIntervalHours":24,"backupRetentionCount":14,"backupMaxAgeDays":60}'
+          Set-Content release-resources/config/release-config.json '{"updateUrl":"","releaseChannel":"stable","enforceLicense":false,"licensePublicKey":"","backupIntervalHours":24,"backupRetentionCount":14,"backupMaxAgeDays":60,"opsEndpoint":"","operationsEnabled":false,"telemetryEnabled":false,"heartbeatIntervalMinutes":60}'
       - run: npx electron-builder --config electron-builder.config.cjs --win nsis --publish never
       - shell: pwsh
         run: |

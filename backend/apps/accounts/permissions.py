@@ -20,6 +20,7 @@ PERMISSION_GROUPS={
   ('audit.view','مشاهده Audit'),('approvals.decide','تأیید درخواست‌ها'),('permissions.manage','مدیریت دسترسی'),
   ('manager_pin.manage','مدیریت PIN مدیر'),('workforce.manage','مدیریت کارکنان'),('workforce.clock','ثبت حضور'),
   ('settings.manage','مدیریت تنظیمات کسب‌وکار'),('business.manage','مدیریت کسب‌وکار'),('branches.manage','مدیریت شعب'),('branches.dashboard','داشبورد چندشعبه‌ای'),('fiscal.manage','تنظیم مالیات و حق سرویس'),('payment_gateway.manage','تنظیم درگاه پرداخت'),('printing.manage','مدیریت پرینتر'),
+  ('operations.view','مشاهده سلامت نصب‌ها و نسخه‌ها'),('operations.manage','درخواست Diagnostic و مدیریت دستگاه‌ها'),
  ],
 }
 

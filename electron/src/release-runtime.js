@@ -6,11 +6,16 @@ const crypto=require("crypto");
 const {createUpdater}=require("./updater");
 const license=require("./offline-license");
 const ops=require("./release-ops");
+const opsClient=require("./ops-client");
+const deviceAdapters=require("./device-adapters");
 
 let updater=null;
 let updateState={enabled:false,status:"disabled"};
+let operationsState={enabled:false,status:"disabled",policy:null,lastHeartbeatAt:null,error:""};
 let scheduleTimer=null;
+let operationsTimer=null;
 let releaseConfig=null;
+let warnedBlockedVersion="";
 
 function dataDir(){const d=app.getPath("userData");fs.mkdirSync(d,{recursive:true});return d;}
 function dbPath(){return path.join(dataDir(),"cafino.sqlite3");}
@@ -36,7 +41,7 @@ function parseResult(result,fallback){
 }
 function verifiedBackup(target){const result=parseResult(runtimeExec(["--backup",target]),"Backup failed");return result&&result.ok?result:{...result,ok:false};}
 function loadConfig(){
-  const defaults={updateUrl:"",enforceLicense:false,licensePublicKey:"",backupIntervalHours:24,backupRetentionCount:14,backupMaxAgeDays:60};
+  const defaults={updateUrl:"",releaseChannel:"stable",enforceLicense:false,licensePublicKey:"",backupIntervalHours:24,backupRetentionCount:14,backupMaxAgeDays:60,opsEndpoint:"",operationsEnabled:false,telemetryEnabled:false,heartbeatIntervalMinutes:60};
   const file=app.isPackaged?path.join(process.resourcesPath,"config","release-config.json"):path.resolve(__dirname,"../release-config.dev.json");
   try{return{...defaults,...JSON.parse(fs.readFileSync(file,"utf8")),_file:file}}catch{return{...defaults,_file:file}}
 }
@@ -77,24 +82,37 @@ function enforceLicenseSync(){
 }
 function backupPolicy(){return{keepCount:releaseConfig.backupRetentionCount,maxAgeDays:releaseConfig.backupMaxAgeDays};}
 function prune(){return ops.pruneBackups(ops.backupDirectory(dataDir()),backupPolicy());}
+function latestBackupSummary(){
+  const rows=ops.listBackups(ops.backupDirectory(dataDir()));const latest=rows[0]||null;
+  return{count:rows.length,latest,ageHours:latest?Math.max(0,(Date.now()-latest.mtimeMs)/3600000):null};
+}
+async function reportOpsEvent(event){
+  if(!releaseConfig?.operationsEnabled||!releaseConfig?.telemetryEnabled||!opsClient.normalizeEndpoint(releaseConfig.opsEndpoint))return;
+  try{
+    await ensureOpsRegistration();
+    await opsClient.sendEvent({userData:dataDir(),endpoint:releaseConfig.opsEndpoint,event:{...event,app_version:app.getVersion(),occurred_at:new Date().toISOString()}});
+  }catch(error){operationsState={...operationsState,error:String(error?.message||error)}}
+}
 function autoBackup(force=false){
   const dir=ops.backupDirectory(dataDir());if(!fs.existsSync(dbPath()))return{ok:false,skipped:true,reason:"database_missing"};
   if(!force&&!ops.scheduledBackupDue(dir,{intervalHours:releaseConfig.backupIntervalHours}))return{ok:true,skipped:true,reason:"not_due"};
-  const target=ops.scheduledBackupPath(dataDir());const result=verifiedBackup(target);if(result.ok)prune();return{...result,path:target};
+  const target=ops.scheduledBackupPath(dataDir());const result=verifiedBackup(target);
+  if(result.ok)prune();else reportOpsEvent({event_type:"backup_failed",severity:"error",component:"backup",code:"verified_backup_failed"});
+  return{...result,path:target};
 }
 function prepareUpdate(version){
   const target=ops.preUpdateBackupPath(dataDir(),version);const result=verifiedBackup(target);if(!result.ok)return result;
   const journal=ops.writeUpdateJournal(dataDir(),{from_version:app.getVersion(),to_version:String(version||""),backup_path:target,backup_sha256:result.sha256||""});prune();return{ok:true,backup:result,journal};
 }
-async function waitHealthy(){
-  for(let i=0;i<90;i++){try{const r=await fetch("http://127.0.0.1:8000/api/v1/health/");if(r.ok)return true}catch{}await new Promise(r=>setTimeout(r,1000));}return false;
-}
+async function backendHealthy(){try{const r=await fetch("http://127.0.0.1:8000/api/v1/health/",{signal:AbortSignal.timeout(2500)});return r.ok}catch{return false}}
+async function waitHealthy(){for(let i=0;i<90;i++){if(await backendHealthy())return true;await new Promise(r=>setTimeout(r,1000));}return false;}
 async function finalizePendingUpdate(){
   const journal=ops.readUpdateJournal(dataDir());if(!journal||journal.state!=="prepared")return;
   if(String(journal.to_version||"")!==app.getVersion())return;
   const healthy=await waitHealthy();
-  if(healthy){ops.updateJournal(dataDir(),{state:"healthy",healthy_at:new Date().toISOString()});return;}
+  if(healthy){ops.updateJournal(dataDir(),{state:"healthy",healthy_at:new Date().toISOString()});await reportOpsEvent({event_type:"update_success",severity:"info",component:"updater",code:"post_update_healthy"});return;}
   ops.updateJournal(dataDir(),{state:"recovery_required",failed_at:new Date().toISOString()});
+  await reportOpsEvent({event_type:"recovery_required",severity:"critical",component:"updater",code:"post_update_health_failed"});
   await dialog.showMessageBox({type:"error",title:"Cafino Update Recovery",message:"نسخه جدید سلامت Backend را تأیید نکرد.",detail:`Backup قبل از آپدیت حفظ شده است:\n${journal.backup_path}\n\nبرای rollback کامل ابتدا installer امضاشده نسخه ${journal.from_version} را نصب کنید و سپس همین Backup را از بخش Backup/Restore برگردانید.`,buttons:["OK"]});
 }
 function setUpdateState(patch){updateState={...updateState,...patch,updated_at:new Date().toISOString()};return updateState;}
@@ -107,9 +125,57 @@ function initUpdater(){
   updater.on("update-available",info=>setUpdateState({status:"available",version:info?.version||""}));
   updater.on("download-progress",p=>setUpdateState({status:"downloading",percent:Math.round(p?.percent||0)}));
   updater.on("update-downloaded",info=>setUpdateState({status:"downloaded",version:info?.version||""}));
-  updater.on("error",error=>setUpdateState({status:"error",error:String(error?.message||error)}));
+  updater.on("error",error=>{setUpdateState({status:"error",error:String(error?.message||error)});reportOpsEvent({event_type:"update_failed",severity:"error",component:"updater",code:"electron_updater_error"})});
 }
-async function checkUpdate(){if(!updater)return updateState;try{await updater.checkForUpdates();return updateState}catch(error){return setUpdateState({status:"error",error:String(error?.message||error)})}}
+function opsConfigured(){return !!(releaseConfig?.operationsEnabled&&opsClient.normalizeEndpoint(releaseConfig?.opsEndpoint));}
+async function ensureOpsRegistration(){
+  if(!opsConfigured())throw new Error("operations_not_configured");
+  const status=currentLicenseStatus();const document=license.loadLicense(licenseFile());
+  if(!status.ok||!document)throw new Error("valid_license_required_for_operations");
+  const result=await opsClient.ensureRegistered({userData:dataDir(),endpoint:releaseConfig.opsEndpoint,licenseDocument:document,machineHash:status.machine_hash,version:app.getVersion(),channel:releaseConfig.releaseChannel||"stable",platform:process.platform,arch:process.arch,telemetryEnabled:!!releaseConfig.telemetryEnabled});
+  return result;
+}
+async function collectDiagnosticSnapshot(){
+  const backups=latestBackupSummary();const registry=deviceAdapters.registryPayload(process.env);let freeDisk=0;
+  try{const stat=fs.statfsSync(dataDir());freeDisk=Number(stat.bavail)*Number(stat.bsize)}catch{}
+  const groups=registry.groups||{};
+  return{
+    app_version:app.getVersion(),release_channel:releaseConfig.releaseChannel||"stable",platform:process.platform,arch:process.arch,
+    backend_healthy:await backendHealthy(),uptime_seconds:Math.round(process.uptime()),db_size_bytes:fs.existsSync(dbPath())?fs.statSync(dbPath()).size:0,
+    free_disk_bytes:Math.max(0,freeDisk),backup_count:backups.count,latest_backup_age_hours:backups.ageHours,
+    update_status:String(updateState.status||"").slice(0,32),adapter_printer:String(groups.PRINTER?.selected||"").slice(0,32),adapter_pager:String(groups.PAGER?.selected||"").slice(0,32),adapter_pos:String(groups.POS?.selected||"").slice(0,32),
+  };
+}
+async function heartbeatOperations(){
+  if(!opsConfigured()){operationsState={enabled:false,status:"disabled",policy:null,lastHeartbeatAt:null,error:""};return operationsState;}
+  operationsState={...operationsState,enabled:true,status:"connecting",error:""};
+  try{
+    await ensureOpsRegistration();const backups=latestBackupSummary();
+    const response=await opsClient.heartbeat({userData:dataDir(),endpoint:releaseConfig.opsEndpoint,payload:{current_version:app.getVersion(),channel:releaseConfig.releaseChannel||"stable",platform:process.platform,arch:process.arch,app_health:(await backendHealthy())?"healthy":"degraded",telemetry_enabled:!!releaseConfig.telemetryEnabled,last_backup_at:backups.latest?new Date(backups.latest.mtimeMs).toISOString():null,last_backup_ok:backups.latest?true:null,last_update_status:String(updateState.status||"").slice(0,32)}});
+    operationsState={enabled:true,status:"online",policy:response.policy||null,lastHeartbeatAt:new Date().toISOString(),error:""};
+    if(response.diagnostic_request_id){const snapshot=await collectDiagnosticSnapshot();await opsClient.submitDiagnostic({userData:dataDir(),endpoint:releaseConfig.opsEndpoint,requestId:response.diagnostic_request_id,snapshot});operationsState.lastDiagnosticAt=new Date().toISOString();}
+    const policy=response.policy||{};
+    if(policy.current_blocked&&warnedBlockedVersion!==app.getVersion()){
+      warnedBlockedVersion=app.getVersion();
+      dialog.showMessageBox({type:"warning",title:"Cafino Release Safety",message:"نسخه فعلی Cafino در Release Control علامت‌گذاری شده است.",detail:`عملیات اصلی Local متوقف نمی‌شود. ${policy.advisory_message||"برای نصب نسخه امن بعدی یا rollback با پشتیبانی هماهنگ کنید."}`,buttons:["OK"]});
+    }
+    return operationsState;
+  }catch(error){operationsState={...operationsState,enabled:true,status:"offline",error:String(error?.message||error)};return operationsState;}
+}
+async function checkUpdate(){
+  if(!updater)return updateState;
+  if(opsConfigured()){
+    await heartbeatOperations();const policy=operationsState.policy;
+    if(policy?.managed){
+      if(policy.target_version===app.getVersion())return setUpdateState({status:"current",version:app.getVersion(),managedByOps:true});
+      if(!policy.update_allowed){
+        const status=policy.current_blocked?"blocked_version":policy.paused?"rollout_paused":"rollout_wait";
+        return setUpdateState({status,managedByOps:true,policyTarget:policy.target_version||"",error:policy.current_blocked?(policy.advisory_message||"Current version is blocked by release policy"):""});
+      }
+    }
+  }
+  try{await updater.checkForUpdates();return updateState}catch(error){return setUpdateState({status:"error",error:String(error?.message||error)})}
+}
 async function downloadUpdate(){if(!updater)return updateState;try{await updater.downloadUpdate();return updateState}catch(error){return setUpdateState({status:"error",error:String(error?.message||error)})}}
 function installDownloadedUpdate(){
   if(!updater||updateState.status!=="downloaded")return{ok:false,error:"No downloaded update"};
@@ -117,22 +183,29 @@ function installDownloadedUpdate(){
   setUpdateState({status:"installing"});setImmediate(()=>updater.quitAndInstall(false,true));return{ok:true,prepared};
 }
 function registerIpc(){
-  ipcMain.handle("release:status",async()=>({version:app.getVersion(),config:{updateConfigured:!!releaseConfig.updateUrl,enforceLicense:!!releaseConfig.enforceLicense,backupIntervalHours:releaseConfig.backupIntervalHours,backupRetentionCount:releaseConfig.backupRetentionCount,backupMaxAgeDays:releaseConfig.backupMaxAgeDays},license:currentLicenseStatus(),update:updateState,pending_update:ops.readUpdateJournal(dataDir()),backups:ops.listBackups(ops.backupDirectory(dataDir())).slice(0,20)}));
+  ipcMain.handle("release:status",async()=>({version:app.getVersion(),config:{updateConfigured:!!releaseConfig.updateUrl,enforceLicense:!!releaseConfig.enforceLicense,backupIntervalHours:releaseConfig.backupIntervalHours,backupRetentionCount:releaseConfig.backupRetentionCount,backupMaxAgeDays:releaseConfig.backupMaxAgeDays,operationsConfigured:opsConfigured(),telemetryEnabled:!!releaseConfig.telemetryEnabled},license:currentLicenseStatus(),update:updateState,operations:operationsState,pending_update:ops.readUpdateJournal(dataDir()),backups:ops.listBackups(ops.backupDirectory(dataDir())).slice(0,20)}));
   ipcMain.handle("license:import",async()=>importLicenseInteractive());
   ipcMain.handle("license:requestCode",async()=>currentLicenseStatus());
   ipcMain.handle("backup:autoNow",async()=>autoBackup(true));
   ipcMain.handle("update:check",async()=>checkUpdate());
   ipcMain.handle("update:download",async()=>downloadUpdate());
   ipcMain.handle("update:install",async()=>installDownloadedUpdate());
+  ipcMain.handle("operations:sync",async()=>heartbeatOperations());
 }
 function install(){
   app.on("ready",()=>{
     releaseConfig=loadConfig();registerIpc();
     if(!enforceLicenseSync())return;
     autoBackup(false);scheduleTimer=setInterval(()=>autoBackup(false),60*60*1000);
-    initUpdater();setTimeout(()=>checkUpdate(),30000);setTimeout(()=>finalizePendingUpdate(),5000);
+    initUpdater();
+    if(opsConfigured()){
+      setTimeout(()=>heartbeatOperations(),10000);
+      operationsTimer=setInterval(()=>heartbeatOperations(),Math.max(15,Number(releaseConfig.heartbeatIntervalMinutes||60))*60*1000);
+      process.on("uncaughtExceptionMonitor",error=>reportOpsEvent({event_type:"crash",severity:"critical",component:"electron",code:"uncaught_exception",fingerprint:opsClient.fingerprintError(error,"electron")}));
+    }
+    setTimeout(()=>checkUpdate(),30000);setTimeout(()=>finalizePendingUpdate(),5000);
   });
-  app.on("before-quit",()=>{if(scheduleTimer)clearInterval(scheduleTimer)});
+  app.on("before-quit",()=>{if(scheduleTimer)clearInterval(scheduleTimer);if(operationsTimer)clearInterval(operationsTimer)});
 }
 
-module.exports={install,loadConfig,currentLicenseStatus,autoBackup,prepareUpdate,enforceLicenseSync};
+module.exports={install,loadConfig,currentLicenseStatus,autoBackup,prepareUpdate,enforceLicenseSync,heartbeatOperations,collectDiagnosticSnapshot};
