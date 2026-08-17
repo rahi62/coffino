@@ -17,6 +17,8 @@ ENVIRONMENT=os.getenv('CAF_INO_ENV','local')
 ALLOWED_HOSTS=[x.strip() for x in os.getenv('DJANGO_ALLOWED_HOSTS','127.0.0.1,localhost').split(',') if x.strip()]
 CAF_INO_LICENSE_PUBLIC_KEY_PEM=os.getenv('CAF_INO_LICENSE_PUBLIC_KEY_PEM','')
 CAF_INO_LICENSE_PUBLIC_KEY_PATH=os.getenv('CAF_INO_LICENSE_PUBLIC_KEY_PATH','')
+CAF_INO_OPS_EVENT_RETENTION_DAYS=int(os.getenv('CAF_INO_OPS_EVENT_RETENTION_DAYS','90'))
+CAF_INO_OPS_DIAGNOSTIC_RETENTION_DAYS=int(os.getenv('CAF_INO_OPS_DIAGNOSTIC_RETENTION_DAYS','30'))
 
 INSTALLED_APPS=[
  'django.contrib.admin','django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles',
@@ -79,6 +81,11 @@ CELERY_BEAT_SCHEDULE={
   'task':'apps.notifications.tasks.process_pending_notifications',
   'schedule':60.0,
   'options':{'expires':55},
+ },
+ 'prune-production-operations-history':{
+  'task':'apps.operations.tasks.prune_operations_history',
+  'schedule':86400.0,
+  'options':{'expires':3600},
  },
 }
 SPECTACULAR_SETTINGS={'TITLE':'Cafino API','VERSION':'1.0.0'}
