@@ -5,44 +5,15 @@
   "main": "src/main.js",
   "scripts": {
     "dev": "electron .",
-    "build": "electron-builder --win nsis"
+    "test:release": "node src/device-adapters.test.js && node src/release-ops.test.js && node src/offline-license.test.js && node src/updater.test.js",
+    "build": "electron-builder --config electron-builder.config.cjs --win nsis --publish never"
   },
   "dependencies": {
-    "electron": "37.2.6"
+    "electron": "37.2.6",
+    "electron-updater": "6.8.9"
   },
   "devDependencies": {
-    "electron-builder": "25.1.8"
+    "electron-builder": "26.15.3"
   },
-  "description": "Cafino Local Hospitality Management",
-  "build": {
-    "appId": "com.digitalafarin.cafino",
-    "productName": "Cafino",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "src/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "release-resources/backend",
-        "to": "backend"
-      },
-      {
-        "from": "release-resources/frontend",
-        "to": "frontend"
-      }
-    ],
-    "win": {
-      "target": [
-        "nsis"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
-    }
-  }
+  "description": "Cafino Local Hospitality Management"
 }
