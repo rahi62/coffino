@@ -4,6 +4,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import has_perm
 from apps.businesses.models import Business
+from apps.core.go_live import deployment_profiles_payload, go_live_payload
 from apps.core.onboarding import apply_onboarding_preset, onboarding_presets_payload
 from apps.core.settings_health import printer_runtime_health_payload, settings_health_payload
 from apps.core.settings_readiness import settings_readiness_payload
@@ -91,3 +92,20 @@ def settings_printer_health(request):
     if not isinstance(devices, list):
         return Response({'detail': 'فهرست دستگاه‌های پرینتر نامعتبر است'}, status=400)
     return Response(printer_runtime_health_payload(branch, devices))
+
+
+@api_view(['GET'])
+def settings_deployment_profiles(request):
+    if not _require_settings(request):
+        return Response({'detail': 'دسترسی به Deployment Profile ندارید'}, status=403)
+    return Response(deployment_profiles_payload())
+
+
+@api_view(['GET'])
+def settings_go_live(request):
+    if not _require_settings(request):
+        return Response({'detail': 'دسترسی به Go-Live Guard ندارید'}, status=403)
+    business = _settings_business(request)
+    if business is None:
+        return Response({'detail': 'کسب‌وکار برای Go-Live مشخص نیست'}, status=400)
+    return Response(go_live_payload(business))
