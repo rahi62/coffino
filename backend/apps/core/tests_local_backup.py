@@ -41,9 +41,9 @@ class LocalBackupVerificationTests(SimpleTestCase):
         with tempfile.TemporaryDirectory() as root:
             empty_db=os.path.join(root,'empty.sqlite3')
             sqlite3.connect(empty_db).close()
-            missing=verify_sqlite_backup(empty_db)
-            self.assertFalse(missing['ok'])
-            self.assertIn('django_migrations',missing['missing_tables'])
+            empty=verify_sqlite_backup(empty_db)
+            self.assertFalse(empty['ok'])
+            self.assertEqual(empty['error'],'Backup file is empty')
 
             corrupt=os.path.join(root,'corrupt.sqlite3')
             with open(corrupt,'wb') as handle:handle.write(b'not-a-sqlite-database')
