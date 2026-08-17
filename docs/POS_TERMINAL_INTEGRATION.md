@@ -87,7 +87,7 @@ The bridge should return JSON. Cafino understands common names such as:
 }
 ```
 
-`approved=true`, `ok=true`, `success=true`, or a status of `approved/success/succeeded/ok/00` is treated as approval.
+Approval must be explicit: `approved=true`, `success=true`, or a status of `approved/success/succeeded/00`. A transport-level `ok=true` by itself is **not** treated as bank approval.
 
 Cafino never needs the full PAN or PIN. Even if a bridge mistakenly returns a full PAN, only the last four digits are retained in the Electron response and they are not stored in the Django Payment model.
 
@@ -130,6 +130,24 @@ cafino-pos-bridge.exe --amount 1250000 --currency IRR --reference <reference>
 The executable writes exactly one JSON response to stdout using the response contract above.
 
 The helper can internally load the vendor DLL/.NET SDK/COM component. This keeps vendor-specific binaries outside the Cafino domain layer and makes upgrades/testing safer.
+
+## Test without real hardware
+
+A development-only mock bridge is included:
+
+```powershell
+node scripts/mock-pos-bridge.js
+```
+
+In another terminal, start Cafino Local/Electron with:
+
+```powershell
+$env:CAF_INO_POS_ADAPTER="HTTP_BRIDGE"
+$env:CAF_INO_POS_BRIDGE_URL="http://127.0.0.1:17890/sale"
+$env:CAF_INO_POS_AMOUNT_UNIT="RIAL"
+```
+
+The mock is only for end-to-end development and installer acceptance. It must never be used as proof that a real PSP/terminal SDK is compatible.
 
 ## What is needed for a specific terminal
 
