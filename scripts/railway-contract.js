@@ -11,5 +11,5 @@ const beat=read("backend/railway-beat.toml");assert.ok(beat.includes("celery -A 
 const front=read("frontend/railway.toml");assert.ok(front.includes('healthcheckPath = "/login"'));
 const docker=read("backend/Dockerfile");assert.ok(docker.includes("${PORT:-8000}"),"Backend Dockerfile must bind Railway PORT");
 const settings=read("backend/config/settings.py");
-for(const token of ["RAILWAY_PUBLIC_DOMAIN","CAF_INO_FRONTEND_ORIGIN","REDIS_URL","ImproperlyConfigured"])assert.ok(settings.includes(token),`Django Railway hardening missing ${token}`);
+for(const token of ["RAILWAY_PUBLIC_DOMAIN","RAILWAY_PRIVATE_DOMAIN","CAF_INO_FRONTEND_ORIGIN","REDIS_URL","ImproperlyConfigured"])assert.ok(settings.includes(token),`Django Railway hardening missing ${token}`);
 console.log("Cafino Railway deployment contract passed");
