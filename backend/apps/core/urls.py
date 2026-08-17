@@ -61,6 +61,7 @@ urlpatterns=[
     path("settings/context/",settings_context),path("settings/readiness/",settings_readiness),
     path("settings/onboarding/presets/",settings_onboarding_presets),path("settings/onboarding/apply/",settings_onboarding_apply),
     path("settings/health/",settings_health),path("settings/health/printer/",settings_printer_health),
+    path("settings/deployment-profiles/",settings_deployment_profiles),path("settings/go-live/",settings_go_live),
     path("settings/users/create/",settings_user_create),path("settings/users/<int:user_id>/password/",settings_user_password),path("permissions/me/",permissions_me),path("permissions/matrix/",permission_matrix),
     path("manager-pin/set/",manager_pin_set),path("manager-override/",manager_override),
     path("attendance/clock-in/",attendance_clock_in),path("attendance/clock-out/",attendance_clock_out),
