@@ -27,9 +27,11 @@ SECRET_KEY=os.getenv('DJANGO_SECRET_KEY','dev-secret-change-me')
 DEBUG=os.getenv('DJANGO_DEBUG','1')=='1'
 ENVIRONMENT=os.getenv('CAF_INO_ENV','local').strip().lower()
 ALLOWED_HOSTS=_csv('DJANGO_ALLOWED_HOSTS','127.0.0.1,localhost')
-railway_domain=os.getenv('RAILWAY_PUBLIC_DOMAIN','').strip()
-if railway_domain:
-    _append_unique(ALLOWED_HOSTS,railway_domain)
+_append_unique(
+    ALLOWED_HOSTS,
+    os.getenv('RAILWAY_PUBLIC_DOMAIN',''),
+    os.getenv('RAILWAY_PRIVATE_DOMAIN',''),
+)
 
 if not DEBUG and ENVIRONMENT in {'saas','dedicated'} and SECRET_KEY=='dev-secret-change-me':
     raise ImproperlyConfigured('DJANGO_SECRET_KEY must be configured for public Cafino deployments.')
