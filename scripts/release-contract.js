@@ -21,7 +21,7 @@ assert.strictEqual(pkg.main,"src/entry.js");
 assert.ok(pkg.dependencies?.["electron-updater"],"electron-updater dependency is required");
 assert.ok(pkg.scripts?.["test:release"],"test:release script is required");
 const builder=fs.readFileSync(path.join(electron,"electron-builder.config.cjs"),"utf8");
-for(const token of ["forceCodeSigning","nsis","artifactName","CAF_INO_UPDATE_URL","https://"])assert.ok(builder.includes(token),`Builder contract missing ${token}`);
+for(const token of ["forceCodeSigning","nsis","artifactName","CAF_INO_UPDATE_URL","CAF_INO_UPDATE_URL must use HTTPS"])assert.ok(builder.includes(token),`Builder contract missing ${token}`);
 const build=fs.readFileSync(path.join(root,"scripts","build-release.ps1"),"utf8");
 for(const token of ["CAF_INO_UPDATE_URL","CAF_INO_LICENSE_PUBLIC_KEY_PATH","CSC_LINK","CSC_KEY_PASSWORD","release-manifest.json","SHA256"])assert.ok(build.includes(token),`Production build gate missing ${token}`);
 console.log("Cafino desktop release contract passed");
