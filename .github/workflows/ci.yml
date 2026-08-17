@@ -83,13 +83,14 @@ jobs:
           New-Item release-resources/config -ItemType Directory -Force | Out-Null
           Set-Content release-resources/backend/cafino-backend.exe "ci-stub"
           Set-Content release-resources/frontend/server.js "console.log('ci-stub')"
-          Set-Content release-resources/config/release-config.json '{"updateUrl":"","enforceLicense":false,"licensePublicKey":"","backupIntervalHours":24,"backupRetentionCount":14,"backupMaxAgeDays":60}'
+          Set-Content release-resources/config/release-config.json '{"updateUrl":"","releaseChannel":"stable","enforceLicense":false,"licensePublicKey":"","backupIntervalHours":24,"backupRetentionCount":14,"backupMaxAgeDays":60}'
       - run: npx electron-builder --config electron-builder.config.cjs --win nsis --publish never
       - shell: pwsh
         run: |
           $installer=Get-ChildItem release -Filter "Cafino-Setup-*.exe" | Select-Object -First 1
           if (-not $installer) { throw "NSIS installer was not produced" }
           Write-Host "Installer contract: $($installer.Name) $($installer.Length) bytes"
+          & "$env:GITHUB_WORKSPACE\scripts\smoke-test-installer.ps1" -Installer $installer.FullName
 
   static-release-gate:
     runs-on: ubuntu-latest
