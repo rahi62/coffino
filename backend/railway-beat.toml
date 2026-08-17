@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "celery -A config beat -l INFO --schedule /tmp/cafino-celerybeat-schedule"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
