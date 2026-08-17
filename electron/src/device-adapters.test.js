@@ -27,6 +27,10 @@ const {registryPayload,callPager,sendPosAmount,allowedBridgeHost,normalizeRespon
 
   const normalized=normalizeResponse({status:"approved",rrn:"123456789",pan:"6037991234567890"},"HTTP_BRIDGE",{amount:1000,terminalAmount:1000,currency:"IRR"});
   assert.equal(normalized.ok,true);assert.equal(normalized.referenceNumber,"123456789");assert.equal(normalized.maskedPan,"****7890");
+  const transportOnly=normalizeResponse({ok:true,status:"transport_ok"},"HTTP_BRIDGE",{amount:1000,terminalAmount:1000,currency:"IRR"});
+  assert.equal(transportOnly.ok,false,"Transport success must never be treated as bank approval");
+  const responseCode00=normalizeResponse({status:"00",rrn:"RRN-00"},"HTTP_BRIDGE",{amount:1000,terminalAmount:1000,currency:"IRR"});
+  assert.equal(responseCode00.ok,true);assert.equal(responseCode00.referenceNumber,"RRN-00");
 
   const server=http.createServer((req,res)=>{let body="";req.on("data",c=>body+=c);req.on("end",()=>{const payload=JSON.parse(body);assert.equal(payload.amount,125000);assert.equal(payload.reference,"checkout-1:pos:0");res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({status:"approved",rrn:"RRN-1",trace:"42",terminal_id:"T-1",pan:"6037991111112222"}))})});
   await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
