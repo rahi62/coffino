@@ -21,6 +21,8 @@ async function authorizeLocalPos(path:string,init?:RequestInit):Promise<RequestI
  const selected=String(registry?.groups?.POS?.selected||"MANUAL").toUpperCase();if(selected==="MANUAL")return init;
  let payload:any;try{payload=JSON.parse(init.body)}catch{return init}
  if(payload?.defer_payment||!Array.isArray(payload?.payments))return init;
+ const pendingPos=payload.payments.filter((payment:any)=>payment?.method==="POS"&&!payment?.reference_number);
+ if(pendingPos.length>1)throw new Error("برای جلوگیری از برداشت ناقص در پرداخت چندنفره، اتصال مستقیم کارت‌خوان فعلاً فقط یک سهم POS را در هر ثبت سفارش خودکار می‌کند. سایر سهم‌ها را دستی تسویه کنید.");
  const key=headerValue(init.headers,"Idempotency-Key")||globalThis.crypto?.randomUUID?.()||String(Date.now());
  const payments=[];
  for(let i=0;i<payload.payments.length;i++){
