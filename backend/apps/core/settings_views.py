@@ -25,6 +25,12 @@ def _require_settings(request):
     return has_perm(request.user, 'settings.manage')
 
 
+def _require_onboarding(request):
+    # Applying a preset changes Business type/deployment and module activation, not just
+    # branch-local settings. Keep that power behind the business-management boundary.
+    return _require_settings(request) and has_perm(request.user, 'business.manage')
+
+
 @api_view(['GET'])
 def settings_readiness(request):
     if not _require_settings(request):
@@ -37,15 +43,15 @@ def settings_readiness(request):
 
 @api_view(['GET'])
 def settings_onboarding_presets(request):
-    if not _require_settings(request):
-        return Response({'detail': 'دسترسی به راه‌اندازی ندارید'}, status=403)
+    if not _require_onboarding(request):
+        return Response({'detail': 'دسترسی مدیریت کسب‌وکار برای راه‌اندازی لازم است'}, status=403)
     return Response(onboarding_presets_payload())
 
 
 @api_view(['POST'])
 def settings_onboarding_apply(request):
-    if not _require_settings(request):
-        return Response({'detail': 'دسترسی به راه‌اندازی ندارید'}, status=403)
+    if not _require_onboarding(request):
+        return Response({'detail': 'دسترسی مدیریت کسب‌وکار برای راه‌اندازی لازم است'}, status=403)
     business = _settings_business(request, request.data.get('business'))
     if business is None:
         return Response({'detail': 'کسب‌وکار برای راه‌اندازی مشخص نیست'}, status=400)
