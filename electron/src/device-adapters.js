@@ -74,8 +74,8 @@ function saleInput(input,env=process.env){
 function safeText(value,max=120){return String(value??"").replace(/[\r\n\t]/g," ").slice(0,max)}
 function maskedPan(value){const digits=String(value||"").replace(/\D/g,"");return digits.length>=4?`****${digits.slice(-4)}`:""}
 function approvedValue(raw){
-  if(raw?.approved===true||raw?.ok===true||raw?.success===true)return true;
-  const status=String(raw?.status||raw?.result||"").toLowerCase();return ["approved","success","succeeded","ok","00"].includes(status);
+  if(raw?.approved===true||raw?.success===true)return true;
+  const status=String(raw?.status||raw?.result||"").toLowerCase();return ["approved","success","succeeded","00"].includes(status);
 }
 function normalizeResponse(raw,adapter,sale){
   const approved=approvedValue(raw);const status=safeText(raw?.status||raw?.result||(approved?"approved":"declined"),32);
@@ -91,7 +91,7 @@ async function httpSale(sale,env){
   try{
     const token=String(env.CAF_INO_POS_BRIDGE_TOKEN||"").trim();const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({amount:sale.terminalAmount,currency:sale.currency,reference:sale.reference,payer_label:sale.payerLabel}),signal:controller.signal,redirect:"error"});
     const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{throw new Error("POS bridge returned invalid JSON.")}
-    if(!response.ok)return{...data,approved:false,status:data.status||`http_${response.status}`,message:data.message||`POS bridge HTTP ${response.status}`};return data;
+    if(!response.ok)return{...data,approved:false,success:false,ok:false,status:data.status||`http_${response.status}`,message:data.message||`POS bridge HTTP ${response.status}`};return data;
   }finally{clearTimeout(timer)}
 }
 function tcpSale(sale,env){return new Promise((resolve,reject)=>{
