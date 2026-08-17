@@ -2,6 +2,8 @@
 
 This runbook covers the Windows Local edition only. The production build is intentionally stricter than a development/unsigned build.
 
+For update-feed storage/CDN details, also read `docs/UPDATE_FEED.md`.
+
 ## 1. One-time offline license keys
 
 Generate an Ed25519 key pair on a trusted machine:
@@ -26,34 +28,59 @@ $env:CSC_LINK="<pfx path, URL, or supported certificate reference>"
 $env:CSC_KEY_PASSWORD="<certificate password>"
 ```
 
-Do not commit signing credentials. The production script refuses to continue without them unless `-AllowUnsigned` is explicitly used for a non-production/pilot scenario.
+Do not commit signing credentials. The production script refuses to continue without them unless `-AllowUnsigned` is explicitly used for a non-production/pilot validation build.
 
-## 3. Update endpoint
+The GitHub Production Release workflow additionally checks the final installer with `Get-AuthenticodeSignature` and rejects a non-valid signature.
+
+## 3. Update endpoint and channels
 
 Cafino Local uses `electron-updater` with the NSIS target and a generic HTTPS update endpoint.
 
-Set:
+Set the base URL without a channel suffix:
 
 ```powershell
-$env:CAF_INO_UPDATE_URL="https://updates.example.com/cafino/local"
+$env:CAF_INO_UPDATE_BASE_URL="https://updates.example.com/cafino/local"
 ```
 
-The update directory must serve the files produced by electron-builder for the stable channel, including the installer, `latest.yml` and blockmap files. Generic-provider uploads are an operational deployment step; the app only consumes them.
+The build script derives one of these URLs:
+
+```text
+https://updates.example.com/cafino/local/stable
+https://updates.example.com/cafino/local/beta
+```
+
+Channel rules:
+
+- Stable: plain SemVer such as `1.2.0`; metadata `latest.yml`.
+- Beta: prerelease SemVer such as `1.3.0-beta.1`; metadata `beta.yml`.
+
+`CAF_INO_UPDATE_URL` remains supported only as a legacy fallback. New deployments should use `CAF_INO_UPDATE_BASE_URL`.
+
+The update directory must serve the installer, matching update metadata and blockmap generated from the same build.
 
 ## 4. Production build
 
+Stable example:
+
 ```powershell
 $env:CAF_INO_LICENSE_PUBLIC_KEY_PATH="C:\secure\cafino\license-public-key.pem"
-$env:CAF_INO_UPDATE_URL="https://updates.example.com/cafino/local"
+$env:CAF_INO_UPDATE_BASE_URL="https://updates.example.com/cafino/local"
 $env:CSC_LINK="C:\secure\cafino\codesign.pfx"
 $env:CSC_KEY_PASSWORD="..."
 
-.\scripts\build-release.ps1 -Production
+.\scripts\build-release.ps1 -Production -Channel stable
+```
+
+Beta example requires the Electron package version to include `-beta`:
+
+```powershell
+.\scripts\build-release.ps1 -Production -Channel beta
 ```
 
 Production build gates:
 
 - static release contract
+- version/channel compatibility
 - no migration drift
 - migrations apply
 - Django deployment checks
@@ -63,22 +90,43 @@ Production build gates:
 - Electron release tests
 - NSIS installer build
 - Windows signing required
+- channel metadata generated (`latest.yml` or `beta.yml`)
 - SHA-256 release manifest generated
 
 Artifacts are under `electron/release/`.
 
-## 5. GitHub Actions signed build
+## 5. GitHub Actions signed build and publication
 
 Workflow: `Cafino Local Production Release`.
 
-Required repository secrets:
+Build/signing secrets:
 
-- `CAF_INO_UPDATE_URL`
+- `CAF_INO_UPDATE_BASE_URL`
 - `CAF_INO_LICENSE_PUBLIC_KEY_PEM`
 - `CSC_LINK`
 - `CSC_KEY_PASSWORD`
 
-Run the workflow manually and provide a SemVer version such as `1.2.0`. The workflow produces a signed installer bundle as a GitHub Actions artifact. Deployment to the generic update host remains a separate controlled step.
+Optional S3-compatible publication requires:
+
+- `CAF_INO_UPDATE_ACCESS_KEY_ID`
+- `CAF_INO_UPDATE_SECRET_ACCESS_KEY`
+- `CAF_INO_UPDATE_REGION`
+- `CAF_INO_UPDATE_BUCKET`
+- optional `CAF_INO_UPDATE_ENDPOINT`
+
+Optional repository variable:
+
+- `CAF_INO_UPDATE_PREFIX` — defaults operationally to `cafino/local`
+
+Run the workflow manually and choose:
+
+- `version`
+- `channel`: Stable or Beta
+- `publish`: false to only build/verify the bundle, true to publish it
+
+When publication is enabled, immutable binaries are uploaded first and channel metadata is uploaded last. The workflow then verifies the public HTTPS metadata URL.
+
+The source repository may remain private; customer applications consume only the public update feed and never require GitHub credentials.
 
 ## 6. Customer offline activation
 
@@ -124,13 +172,15 @@ Backups use the existing verified SQLite flow and are pruned only after a succes
 
 ## 8. Safe update flow
 
-1. Cafino checks the configured HTTPS update endpoint.
+1. Cafino checks the HTTPS feed packaged for its release channel.
 2. Operator downloads the update from Settings → Release & License.
 3. Before installation, Cafino creates and verifies a `pre-update` database backup.
 4. An update recovery journal records current version, target version, backup path and backup hash.
 5. The NSIS updater installs and restarts Cafino.
 6. New runtime must pass backend health verification.
 7. If health verification fails, the recovery journal is marked `recovery_required` and the pre-update backup is preserved.
+
+Automatic downgrade is disabled. Moving a customer between Stable and Beta should be an explicit deployment decision rather than an implicit updater downgrade.
 
 ## 9. Rollback boundary
 
@@ -143,16 +193,35 @@ If a new binary is unhealthy:
 3. Restore the pre-update database backup from Backup/Restore.
 4. Re-run Go-Live / Local Runtime Preflight.
 
-Keep at least one previous signed installer available for production rollback.
+Keep previous signed installers available in update storage or an immutable release archive.
 
-## 10. Release acceptance
+## 10. Clean Windows installed smoke
 
-A production release should not be delivered unless:
+Workflow: `Cafino Windows Installed Smoke`.
 
-- CI is green.
-- Signed installer is built.
-- release manifest hashes are stored with the release.
-- update endpoint serves matching metadata/artifacts.
-- license activation is tested on a clean Windows machine.
-- backup → restore drill passes on the target device.
+It builds a full non-production Local installer, installs it silently into a clean temporary path, launches the installed application and verifies:
+
+```text
+http://127.0.0.1:8000/api/v1/health/
+http://127.0.0.1:3000/
+```
+
+It also verifies that the NSIS uninstaller exists. This catches integration failures that source-level backend/frontend tests and a stub installer contract cannot detect.
+
+## 11. Release acceptance
+
+A production Stable release should not be delivered unless:
+
+- normal CI is green;
+- Windows Installed Smoke is green;
+- signed installer is built and Authenticode reports `Valid`;
+- release manifest hashes are stored with the release;
+- update endpoint serves matching metadata/artifacts;
+- public feed verification passes;
+- license activation is tested on a clean Windows machine;
+- backup → restore drill passes on the target device;
 - previous signed installer is retained for rollback.
+
+## 12. Known visual packaging gap
+
+The repository currently has no Cafino Windows `.ico` asset. electron-builder therefore uses its default Electron icon. Before commercial distribution, add the approved Cafino brand icon and wire it into the Windows builder configuration.
