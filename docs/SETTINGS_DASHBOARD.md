@@ -63,4 +63,3 @@ Django Admin is intentionally not removed. Recommended production policy:
 - only platform/support staff receive `is_staff`;
 - tenant owners/managers use the Cafino dashboard;
 - keep `/admin` behind stronger operational controls where practical (VPN, SSO, allow-list, or equivalent infrastructure policy).
-

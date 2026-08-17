@@ -15,7 +15,7 @@ class AuditLogVS(viewsets.ReadOnlyModelViewSet):
         if business is None:
             return qs.none()
         if self.request.user.branch_id and not has_perm(self.request.user,'branches.dashboard'):
-            return qs.filter(branch=self.request.user.branch)
+            return qs.filter(models.Q(branch=self.request.user.branch)|models.Q(business=business,branch__isnull=True))
         return qs.filter(models.Q(business=business)|models.Q(business__isnull=True,branch__business=business)).distinct()
 
 class ApprovalRequestVS(viewsets.ReadOnlyModelViewSet):
@@ -212,18 +212,6 @@ class PrintTemplateVS(BaseVS):
     def perform_create(self,serializer):
         if not has_perm(self.request.user,'printing.manage'):raise PermissionDenied('دسترسی ندارید')
         super().perform_create(serializer)
-        self._keep_single_default(serializer.instance)
-
-    def perform_update(self,serializer):
-        super().perform_update(serializer)
-        self._keep_single_default(serializer.instance)
-
-    @staticmethod
-    def _keep_single_default(template):
-        if template.is_default:
-            PrintTemplate.objects.filter(
-                branch=template.branch,document_type=template.document_type,is_default=True
-            ).exclude(pk=template.pk).update(is_default=False)
     def perform_update(self,serializer):
         if not has_perm(self.request.user,'printing.manage'):raise PermissionDenied('دسترسی ندارید')
         super().perform_update(serializer)
@@ -321,16 +309,6 @@ class SmsProviderConfigVS(BaseVS):
     cafino_write_permission='notifications.manage'
     queryset=SmsProviderConfig.objects.select_related('branch').all()
     serializer_class=SmsProviderConfigSerializer
-
-    def get_queryset(self):
-        qs=super().get_queryset()
-        return qs if has_perm(self.request.user,'notifications.manage') else qs.none()
-
-class PagerProviderConfigVS(BaseVS):
-    cafino_read_permission='notifications.manage'
-    cafino_write_permission='notifications.manage'
-    queryset=PagerProviderConfig.objects.select_related('branch').all()
-    serializer_class=PagerProviderConfigSerializer
 
     def get_queryset(self):
         qs=super().get_queryset()
@@ -439,3 +417,4 @@ class PushProviderConfigVS(BaseVS):
     def perform_create(self,serializer):
         if not has_perm(self.request.user,'notifications.manage'):raise PermissionDenied('دسترسی ندارید')
         super().perform_create(serializer)
+

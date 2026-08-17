@@ -44,4 +44,3 @@ export function SettingsProvider({children}:{children:React.ReactNode}){
 }
 
 export function useSettings(){const x=useContext(Ctx);if(!x)throw new Error("useSettings must be used inside SettingsProvider");return x}
-

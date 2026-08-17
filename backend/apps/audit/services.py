@@ -1,5 +1,6 @@
 from .models import AuditLog
 
+
 def _business_for(*,actor=None,branch=None,entity=None):
     if branch is not None:
         return getattr(branch,'business',None)
@@ -20,6 +21,7 @@ def _business_for(*,actor=None,branch=None,entity=None):
         if actor_branch is not None:
             return getattr(actor_branch,'business',None)
     return None
+
 
 def log_action(*,actor=None,branch=None,action,entity=None,description='',before=None,after=None,metadata=None,request=None):
     ip=None

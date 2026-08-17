@@ -1,0 +1,4 @@
+﻿param([Parameter(Mandatory=$true)][string]$ProjectRoot,[Parameter(Mandatory=$true)][string]$BackupPath)
+$ErrorActionPreference="Stop";$PatchRoot=Split-Path -Parent $MyInvocation.MyCommand.Path;$manifest=Get-Content (Join-Path $PatchRoot "patch-manifest.json") -Raw|ConvertFrom-Json;$ProjectRoot=(Resolve-Path $ProjectRoot).Path;$BackupPath=(Resolve-Path $BackupPath).Path
+foreach($e in $manifest.entries){$rel=$e.path -replace '/', [IO.Path]::DirectorySeparatorChar;$target=Join-Path $ProjectRoot $rel;$backup=Join-Path $BackupPath $rel;if(Test-Path $backup -PathType Leaf){New-Item -ItemType Directory -Force (Split-Path -Parent $target)|Out-Null;Copy-Item $backup $target -Force}elseif($e.status -eq "new" -and (Test-Path $target -PathType Leaf)){Remove-Item $target -Force}}
+Write-Host "File rollback finished. Database migration rollback is intentionally manual." -ForegroundColor Yellow

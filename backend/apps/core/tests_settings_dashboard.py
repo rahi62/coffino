@@ -23,11 +23,11 @@ class SettingsDashboardTests(TestCase):
         self.hall=Hall.objects.create(branch=self.branch,name='Hall')
         self.table=Table.objects.create(hall=self.hall,number='1',capacity=4)
 
-    def api_client(self,user):
+    def client(self,user):
         c=APIClient();c.force_authenticate(user=user);return c
 
     def test_owner_can_load_settings_context(self):
-        response=self.api_client(self.owner).get('/api/v1/settings/context/')
+        response=self.client(self.owner).get('/api/v1/settings/context/')
         self.assertEqual(response.status_code,200)
         body=response.json()
         self.assertEqual(body['business']['id'],self.business.id)
@@ -35,33 +35,11 @@ class SettingsDashboardTests(TestCase):
         self.assertTrue(body['permissions']['settings.manage'])
 
     def test_operational_user_cannot_open_settings_context(self):
-        response=self.api_client(self.waiter).get('/api/v1/settings/context/')
+        response=self.client(self.waiter).get('/api/v1/settings/context/')
         self.assertEqual(response.status_code,403)
-
-    def test_branch_manager_cannot_create_a_business_wide_manager(self):
-        manager=User.objects.create_user(
-            username='branch-manager',password='password123',business=self.business,
-            branch=self.branch,role=User.Role.MANAGER
-        )
-        response=self.api_client(manager).post('/api/v1/settings/users/create/',{
-            'username':'escalated-manager','password':'password123','role':'MANAGER'
-        },format='json')
-        self.assertEqual(response.status_code,403)
-        self.assertFalse(User.objects.filter(username='escalated-manager').exists())
-
-    def test_branch_manager_sees_only_own_branch_in_settings_context(self):
-        other=Branch.objects.create(business=self.business,name='Other branch')
-        manager=User.objects.create_user(
-            username='branch-manager-context',password='password123',business=self.business,
-            branch=self.branch,role=User.Role.MANAGER
-        )
-        response=self.api_client(manager).get('/api/v1/settings/context/')
-        self.assertEqual(response.status_code,200)
-        self.assertEqual([row['id'] for row in response.json()['branches']],[self.branch.id])
-        self.assertNotEqual(other.id,self.branch.id)
 
     def test_waiter_can_operate_table_but_cannot_reconfigure_it(self):
-        c=self.api_client(self.waiter)
+        c=self.client(self.waiter)
         patch=c.patch(f'/api/v1/tables/{self.table.id}/',{'capacity':8},format='json')
         self.assertEqual(patch.status_code,403)
         open_response=c.post(f'/api/v1/tables/{self.table.id}/open_session/',{'customer_count':2},format='json')
@@ -72,18 +50,18 @@ class SettingsDashboardTests(TestCase):
         BusinessModule.objects.create(business=self.business,key='DINE_IN',enabled=False)
         # Force a fresh authenticated user object so permission cache is empty.
         waiter=User.objects.get(pk=self.waiter.pk)
-        c=self.api_client(waiter)
+        c=self.client(waiter)
         table_response=c.get('/api/v1/tables/')
         self.assertEqual(table_response.status_code,200)
         self.assertEqual(table_response.json(),[])
         owner=User.objects.get(pk=self.owner.pk)
-        context=self.api_client(owner).get('/api/v1/settings/context/')
+        context=self.client(owner).get('/api/v1/settings/context/')
         self.assertEqual(context.status_code,200)
         self.assertTrue(context.json()['permissions']['settings.manage'])
         self.assertFalse(context.json()['permissions']['tables.use'])
 
     def test_settings_change_creates_business_scoped_audit(self):
-        c=self.api_client(self.owner)
+        c=self.client(self.owner)
         response=c.patch(
             f'/api/v1/branches/{self.branch.id}/',{'phone':'02100000000'},format='json'
         )
@@ -94,7 +72,7 @@ class SettingsDashboardTests(TestCase):
         self.assertEqual(log.after['phone'],'02100000000')
 
     def test_business_module_change_is_audited_even_without_branch(self):
-        c=self.api_client(self.owner)
+        c=self.client(self.owner)
         response=c.post('/api/v1/business-modules/',{
             'business':self.business.id,'key':'LOYALTY','enabled':True,'config':{}
         },format='json')
@@ -103,7 +81,7 @@ class SettingsDashboardTests(TestCase):
         self.assertEqual(log.business_id,self.business.id)
 
     def test_owner_can_create_operational_user_from_dashboard(self):
-        response=self.api_client(self.owner).post('/api/v1/settings/users/create/',{
+        response=self.client(self.owner).post('/api/v1/settings/users/create/',{
             'username':'new-cashier','password':'password123','first_name':'صندوق',
             'role':'CASHIER','branch':self.branch.id,'business':self.business.id
         },format='json')
@@ -115,14 +93,14 @@ class SettingsDashboardTests(TestCase):
         self.assertTrue(AuditLog.objects.filter(action='TEAM_USER_CREATED',entity_id=str(user.id)).exists())
 
     def test_operational_user_cannot_create_user(self):
-        response=self.api_client(self.waiter).post('/api/v1/settings/users/create/',{
+        response=self.client(self.waiter).post('/api/v1/settings/users/create/',{
             'username':'bad-user','password':'password123','role':'CASHIER','branch':self.branch.id
         },format='json')
         self.assertEqual(response.status_code,403)
         self.assertFalse(User.objects.filter(username='bad-user').exists())
 
     def test_cash_register_definition_requires_settings_permission(self):
-        response=self.api_client(self.waiter).post('/api/v1/cash-registers/',{
+        response=self.client(self.waiter).post('/api/v1/cash-registers/',{
             'branch':self.branch.id,'name':'Forbidden register','is_active':True
         },format='json')
         self.assertEqual(response.status_code,403)

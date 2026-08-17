@@ -1,0 +1,164 @@
+{
+  "patch": "cafino-settings-dashboard-v1.0.0",
+  "based_on_upload": "coffino.zip",
+  "entry_count": 26,
+  "entries": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "4792b4240884f1800b40c6410c19588e803c8cf056ba8386b8de2f410caac266"
+    },
+    {
+      "path": "backend/apps/accounts/permissions.py",
+      "status": "modified",
+      "base_sha256": "90851b8b21fd2034822d9005099e4afadaa3b8a1184630ae032ccf63ea1cfc37",
+      "new_sha256": "4eb1dc0871fb2081dd8dce122c038203219674fa1790b294d9bb2ea290018907"
+    },
+    {
+      "path": "backend/apps/audit/migrations/0004_auditlog_business.py",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "283ac1e953269a24a8446400d2785ccda6477e46968415ddc1b097e1d1c59fbc"
+    },
+    {
+      "path": "backend/apps/audit/models.py",
+      "status": "modified",
+      "base_sha256": "d067c5aab48377c9569ad80f77c1193c790e663c47dfbcdfbd26bce136223ca2",
+      "new_sha256": "c06c73886dc8b9e6f3b348cea9d26d05a3381dae8d3baecc0dee254b6e7c810b"
+    },
+    {
+      "path": "backend/apps/audit/services.py",
+      "status": "modified",
+      "base_sha256": "12e791e5b3bdb32493f0402b651b2e1c103dd6cfea79d602a438d735948394dc",
+      "new_sha256": "b17bb08404ab3b64a0cdb94225023eaf7c116758f022a521b45cd6a98800d87c"
+    },
+    {
+      "path": "backend/apps/core/api/operations.py",
+      "status": "modified",
+      "base_sha256": "6ee036ee8de52c41ed13e0a31ef3ebab91080d6deea005574e8682ac97a93577",
+      "new_sha256": "bec271b061796646502eb0a57fc5bf04e0cf7394b1f380823c8d4f4630ab74d7"
+    },
+    {
+      "path": "backend/apps/core/api/shared.py",
+      "status": "modified",
+      "base_sha256": "19db94af9a234dde29abf9b90ca338b88a60dfdb7d52fe5d24e5ca853c670427",
+      "new_sha256": "d3405291ebde1c176fd612fb7a37a372a276ef7c0b1037274f2a86a21d2ebc80"
+    },
+    {
+      "path": "backend/apps/core/api/viewsets_finance.py",
+      "status": "modified",
+      "base_sha256": "189815114b496a83d77ec0bf6d820666da6a9cbd7d1a3017bd0b1e1145500975",
+      "new_sha256": "5d4f5c73a8fddfb98d5c592b55d1a48b3925ae54be55e67e6af92c44178bd8a0"
+    },
+    {
+      "path": "backend/apps/core/api/viewsets_management.py",
+      "status": "modified",
+      "base_sha256": "5a8ca0660fe3f71391aec8b4f69ac9ce4ad6de8e8efd5d440e17c231f05854a1",
+      "new_sha256": "336882515b3dcab933f214f6b26881808fe1e29ea4b58927f8a5eac02868731f"
+    },
+    {
+      "path": "backend/apps/core/api/viewsets_orders.py",
+      "status": "modified",
+      "base_sha256": "e3c122c3ba55caa125a836410e559559ea72ca2c10525ee61985df9a4abb777f",
+      "new_sha256": "ff751dfe764a9c54dc5b0c88e11b643e57dceae1bc5c725220bcd16a64db245f"
+    },
+    {
+      "path": "backend/apps/core/tests_settings_dashboard.py",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "9534dee7f4ac5e4204eb66467712045660acaec85dff7032b14197d17233707d"
+    },
+    {
+      "path": "backend/apps/core/urls.py",
+      "status": "modified",
+      "base_sha256": "c7eae835c0c4cb7e6bb20c752da1a5adb4364c22d2da2e84fc9f7ea192aa8ebe",
+      "new_sha256": "3cb96fa92310ae9cfb0e2762c4f29264c244d8f32c9b566e6c0f0a343f46bc5a"
+    },
+    {
+      "path": "docs/SETTINGS_DASHBOARD.md",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "f6cdd1d39b703bcd3438f44f86a2c87f40fbc3eb7e0808b4c400443880a639e1"
+    },
+    {
+      "path": "frontend/src/app/settings/branches/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "ade80f28c0cb926fc434383113a32c3f7bed5fc079b7576f7542cb1ff020528c"
+    },
+    {
+      "path": "frontend/src/app/settings/business/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "830310d6838fec49a3b7166cee2d02488b5da537a9a888a6c84b396989ff86af"
+    },
+    {
+      "path": "frontend/src/app/settings/catalog/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "7cdbca7111012ff3dab1be21a34f1b5350eac3772a0e7aeed369ec9c590747f4"
+    },
+    {
+      "path": "frontend/src/app/settings/dining/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "b2d89e1a88bc5eddaff8a6a05f42aac738f31848119c3e2a69f36e3cf38ae839"
+    },
+    {
+      "path": "frontend/src/app/settings/layout.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "0e559c5e721df96397b9d02ebd1011832ac9899194ae65d0202d299a1c8fcb84"
+    },
+    {
+      "path": "frontend/src/app/settings/notifications/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "f81e424048a73da6120b3b74c8647c1e0e02f74790bf2e05ee8aec93c302b3eb"
+    },
+    {
+      "path": "frontend/src/app/settings/online/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "ad07e1d3464893b3ebc6c97c3201750f0b64951a4fc872c647cbce4eec2ffaf6"
+    },
+    {
+      "path": "frontend/src/app/settings/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "f24985084b5313a2fa277c5dcc6a5d749f3a812e13bb9a38a14db80c12e172e5"
+    },
+    {
+      "path": "frontend/src/app/settings/sales/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "25f8728fb8e8e58272fb3ad494f16ce6af9aa19f4df13597c6db79abeadef95b"
+    },
+    {
+      "path": "frontend/src/app/settings/team/page.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "95cd1aaebb1e0e7fad1c2b6486d918ab0a8b54629b6468f077a60f886e53a509"
+    },
+    {
+      "path": "frontend/src/components/settings/settings-context.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "45688f9c964faa53ba08dead96c5c50b973a4dc1a6b56f31631e2da511aa1047"
+    },
+    {
+      "path": "frontend/src/components/settings/settings-shell.tsx",
+      "status": "new",
+      "base_sha256": null,
+      "new_sha256": "ea5576c2b66485031befd5750cd3189ee1949dca582e765a60a4eee88ce678b5"
+    },
+    {
+      "path": "frontend/src/components/sidebar.tsx",
+      "status": "modified",
+      "base_sha256": "465beaba8c9c5f62150b346f509c06cd24ee574d250cab27b2e10e24745371a9",
+      "new_sha256": "edf97db0fd7784981a6bc310fe12c93410936e6ef7f6862410bcb7d1b30fca12"
+    }
+  ],
+  "deleted": []
+}

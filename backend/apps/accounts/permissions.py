@@ -22,6 +22,7 @@ PERMISSION_GROUPS={
   ('settings.manage','مدیریت تنظیمات کسب‌وکار'),('business.manage','مدیریت کسب‌وکار'),('branches.manage','مدیریت شعب'),('branches.dashboard','داشبورد چندشعبه‌ای'),('fiscal.manage','تنظیم مالیات و حق سرویس'),('payment_gateway.manage','تنظیم درگاه پرداخت'),('printing.manage','مدیریت پرینتر'),
  ],
 }
+
 PERMISSION_MODULES={
  'orders.view':'POS','orders.create':'POS','orders.complete':'POS','orders.void':'POS','orders.transfer':'POS',
  'payments.create':'POS','payments.refund':'POS','payments.split':'POS','discount.manual':'POS','discount.rules.manage':'POS',
@@ -32,6 +33,7 @@ PERMISSION_MODULES={
  'loyalty.manage':'LOYALTY','giftcards.manage':'GIFT_CARD','notifications.manage':'NOTIFICATIONS','online_ordering.manage':'ONLINE_ORDERING','delivery.manage':'DELIVERY',
  'branches.dashboard':'MULTI_BRANCH','fiscal.manage':'ACCOUNTING','payment_gateway.manage':'PAYMENT_GATEWAY','printing.manage':'PRINTING','printing.use':'PRINTING',
 }
+
 def _module_enabled(user,code):
     key=PERMISSION_MODULES.get(code)
     if not key or not user or not user.is_authenticated or user.is_superuser:
@@ -46,12 +48,13 @@ def _module_enabled(user,code):
         from apps.businesses.models import BusinessModule
         cache={k:enabled for k,enabled in BusinessModule.objects.filter(business_id=business_id).values_list('key','enabled')}
         user._cafino_module_cache=cache
+    # Missing rows preserve historical behavior; an explicit disabled row gates the module.
     return cache.get(key,True)
+
 ALL_PERMISSION_CODES=[code for rows in PERMISSION_GROUPS.values() for code,_ in rows]
-MANAGER_RESTRICTED_PERMISSIONS={'business.manage','branches.manage','branches.dashboard','permissions.manage'}
 ROLE_PERMISSIONS={
  'OWNER':{'*'},'MANAGER':{'*'},
- 'CASHIER':{'orders.view','orders.create','orders.complete','payments.create','payments.split','orders.transfer','tables.use','cashier.use','printing.use','discount.request','void.request','workforce.clock'},
+ 'CASHIER':{'orders.view','orders.create','orders.complete','payments.create','payments.split','orders.transfer','cashier.use','printing.use','discount.request','void.request','workforce.clock'},
  'WAITER':{'orders.view','orders.create','orders.complete','orders.transfer','tables.use','reservations.manage','workforce.clock'},
  'KITCHEN':{'kitchen.view','kitchen.update','workforce.clock'},
  'INVENTORY':{'inventory.view','inventory.manage','inventory.count','inventory.lot_count','inventory.transfer','production.manage','waste.manage','purchasing.view','purchasing.manage','food_cost.view','workforce.clock'},
@@ -62,8 +65,6 @@ def has_perm(user,code):
     if user.is_superuser:return True
     if not _module_enabled(user,code):return False
     overrides=user.permission_overrides or {}
-    if user.role=='MANAGER' and user.branch_id and code in MANAGER_RESTRICTED_PERMISSIONS:
-        return False
     if code in overrides:return bool(overrides[code])
     allowed=ROLE_PERMISSIONS.get(user.role,set())
     return '*' in allowed or code in allowed

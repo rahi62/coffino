@@ -98,18 +98,6 @@ def checkout(request):
         except ValueError as e:
             return Response({"detail":str(e)},status=400)
 
-    ready_notification_method=request.data.get('ready_notification_method','SMS')
-    if ready_notification_method not in dict(TakeawayProfile.ReadyNotificationMethod.choices):
-        return Response({'detail':'روش اطلاع‌رسانی بیرون‌بر معتبر نیست'},status=400)
-    pager=None
-    if request.data.get('order_type','TAKEAWAY')=='TAKEAWAY' and ready_notification_method=='SMS' and not request.data.get('customer_phone'):
-        return Response({'detail':'برای اطلاع‌رسانی پیامکی، شماره همراه مشتری را وارد کنید.'},status=400)
-    if request.data.get('order_type','TAKEAWAY')=='TAKEAWAY' and ready_notification_method=='PAGER':
-        pager=get_object_or_404(
-            PagerDevice.objects.select_for_update().select_related('branch'),
-            pk=request.data.get('pager_id'),branch=branch,status=PagerDevice.Status.AVAILABLE,
-        )
-
     try:
         order=checkout_order(
             branch=branch,items=rows,order_type=request.data.get("order_type","TAKEAWAY"),
@@ -125,21 +113,14 @@ def checkout(request):
         return Response({"detail":str(e)},status=400)
 
     if order.order_type=="TAKEAWAY":
-        profile,_=TakeawayProfile.objects.get_or_create(
+        TakeawayProfile.objects.get_or_create(
             order=order,
             defaults={
                 "pickup_number":str(order.order_number),
                 "customer_name":request.data.get("customer_name",""),
-                "customer_phone":request.data.get("customer_phone","") ,
-                "ready_notification_method":ready_notification_method,
+                "customer_phone":request.data.get("customer_phone","")
             }
         )
-        if pager and profile.pager_id!=pager.id:
-            profile.pager=pager
-            profile.ready_notification_method=ready_notification_method
-            profile.save(update_fields=['pager','ready_notification_method','updated_at'])
-            pager.status=PagerDevice.Status.ASSIGNED
-            pager.save(update_fields=['status','updated_at'])
     if order.order_type=="DELIVERY" and delivery_address:
         from apps.delivery.services import create_delivery_assignment
         create_delivery_assignment(order=order,address=delivery_address,fee=delivery_fee)
@@ -155,11 +136,6 @@ def create_multi_purchase(request):
         return Response({'detail':'شعبه خرید معتبر یا مجاز نیست'},status=403)
 
     supplier=get_object_or_404(Supplier,pk=request.data.get('supplier'),branch=branch)
-    bank_account=None
-    if request.data.get('bank_account'):
-        bank_account=get_object_or_404(
-            BankAccount,pk=request.data.get('bank_account'),branch=branch,is_active=True
-        )
     rows=[]
     for raw in request.data.get('items',[]):
         item=get_object_or_404(InventoryItem,pk=raw.get('inventory_item'),branch=branch)
@@ -171,8 +147,8 @@ def create_multi_purchase(request):
         obj=create_purchase(
             branch=branch,supplier=supplier,rows=rows,invoice_date=request.data.get('invoice_date'),
             user=request.user,invoice_number=request.data.get('invoice_number',''),
-            purchaser_name=request.data.get('purchaser_name',''),notes=request.data.get('notes',''),paid_amount=request.data.get('paid_amount',0),
-            payment_method=request.data.get('payment_method','CASH'),bank_account=bank_account
+            notes=request.data.get('notes',''),paid_amount=request.data.get('paid_amount',0),
+            payment_method=request.data.get('payment_method','CASH')
         )
     except ValueError as e:
         return Response({'detail':str(e)},status=400)
@@ -233,6 +209,8 @@ def sales_reports(request):
     except Exception:
         return Response({'detail':'شعبه گزارش معتبر یا مجاز نیست'},status=403)
     return Response(sales_analytics(branch,request.GET.get('start'),request.GET.get('end')))
+
+
 
 @api_view(['POST'])
 @transaction.atomic
@@ -313,8 +291,6 @@ def settings_context(request):
     if business is None:
         return Response({'detail':'کسب‌وکار برای تنظیمات مشخص نیست'},status=400)
     branches=Branch.objects.filter(business=business).order_by('name')
-    if request.user.branch_id and not has_perm(request.user,'branches.dashboard'):
-        branches=branches.filter(pk=request.user.branch_id)
     modules=BusinessModule.objects.filter(business=business).order_by('key')
     permissions_map={code:has_perm(request.user,code) for code in ALL_PERMISSION_CODES}
     return Response({

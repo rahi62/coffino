@@ -58,17 +58,11 @@ class PurchaseInvoiceVS(BaseVS):
     def pay(self,request,pk=None):
         if not has_perm(request.user,'purchasing.manage'):
             return Response({'detail':'دسترسی ندارید'},status=403)
-        invoice=self.get_object()
-        bank_account=None
-        if request.data.get('bank_account'):
-            bank_account=get_object_or_404(
-                BankAccount,pk=request.data.get('bank_account'),branch=invoice.branch,is_active=True
-            )
         try:
             payment=pay_supplier(
-                invoice=invoice,amount=request.data.get('amount'),
+                invoice=self.get_object(),amount=request.data.get('amount'),
                 method=request.data.get('method','CASH'),reference=request.data.get('reference',''),
-                bank_account=bank_account,user=request.user
+                user=request.user
             )
         except ValueError as e:
             return Response({"detail":str(e)},status=400)
@@ -92,13 +86,6 @@ class SupplierPaymentVS(BaseVS): queryset=SupplierPayment.objects.all(); seriali
 
 class ExpenseCategoryVS(BaseVS): queryset=ExpenseCategory.objects.all(); serializer_class=ExpenseCategorySerializer; cafino_write_permission='expenses.manage'; cafino_read_permission=('expenses.manage', 'reports.view')
 
-class BankAccountVS(BaseVS):
-    queryset=BankAccount.objects.select_related('branch').all()
-    serializer_class=BankAccountSerializer
-    cafino_read_permission=('orders.create', 'cashier.use', 'settings.manage', 'purchasing.view', 'purchasing.manage')
-    cafino_write_permission='settings.manage'
-    filterset_fields=['branch', 'kind', 'is_active']
-
 class ExpenseVS(BaseVS):
     cafino_read_permission=('expenses.manage', 'reports.view')
     cafino_write_permission='expenses.manage'
@@ -118,14 +105,10 @@ class ExpenseVS(BaseVS):
             category=get_object_or_404(ExpenseCategory,pk=request.data.get('category'))
             if category.branch_id!=branch.id:
                 return Response({'detail':'دسته هزینه متعلق به شعبه نیست'},status=400)
-        bank_account=None
-        if request.data.get('bank_account'):
-            bank_account=get_object_or_404(BankAccount,pk=request.data.get('bank_account'))
         try:
             expense=create_expense(
                 branch=branch,title=request.data.get('title','هزینه'),amount=request.data.get('amount'),
                 occurred_at=request.data.get('occurred_at'),category=category,
-                bank_account=bank_account,
                 payment_method=request.data.get('payment_method','CASH'),
                 notes=request.data.get('notes',''),user=request.user
             )

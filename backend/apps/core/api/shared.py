@@ -1,6 +1,4 @@
 from decimal import Decimal
-from datetime import date, datetime, time
-from uuid import UUID
 from django.db import models
 from django.db import transaction
 from django.utils import timezone
@@ -17,14 +15,14 @@ from apps.dining.models import Hall, Table, TableSession
 from apps.orders.models import Order, ApprovalRequest
 from apps.payments.models import Payment, Refund
 from apps.kitchen.models import PreparationStation, KitchenTicket
-from apps.inventory.models import IngredientCategory, InventoryItem, StockMovement, RecipeItem
+from apps.inventory.models import InventoryItem, StockMovement, RecipeItem
 from apps.takeaway.models import PagerDevice, TakeawayProfile
 from apps.cashier.models import CashRegister, CashShift, CashMovement, DailyClosing
 from apps.cashier.services import close_shift, close_business_day
 from apps.suppliers.models import Supplier
 from apps.purchasing.models import PurchaseInvoice, PurchaseItem, SupplierPayment
 from apps.purchasing.services import post_purchase, create_purchase, pay_supplier
-from apps.accounting.models import BankAccount, ExpenseCategory, Expense, FixedOverhead
+from apps.accounting.models import ExpenseCategory, Expense, FixedOverhead
 from apps.accounting.services import create_expense
 from apps.reports.services import profit_report
 from apps.orders.services import checkout_order, void_order, refund_order, apply_discount
@@ -58,7 +56,7 @@ from apps.reservations.models import Reservation
 from apps.reservations.services import create_reservation, seat_reservation
 from apps.loyalty.models import LoyaltyProgram, CustomerLoyaltyAccount, LoyaltyLedger, WalletAccount, WalletTransaction
 from apps.loyalty.services import get_accounts, redeem_points_to_wallet, credit_wallet, earn_order_points
-from apps.notifications.models import Notification, PagerProviderConfig, SmsProviderConfig
+from apps.notifications.models import Notification, SmsProviderConfig
 from apps.notifications.services import process_notification, process_pending
 from apps.online_ordering.models import OnlineMenuSettings, TableQrToken, OnlineOrder
 from apps.online_ordering.services import ensure_settings, public_menu, create_public_order, confirm_online_payment
@@ -105,7 +103,6 @@ class BaseVS(viewsets.ModelViewSet):
         'kitchen.preparationstation':('branch','branch__business'),
         'kitchen.kitchenticket':('order__branch','order__branch__business'),
         'inventory.inventoryitem':('branch','branch__business'),
-        'inventory.ingredientcategory':('branch','branch__business'),
         'inventory.stockmovement':('item__branch','item__branch__business'),
         'inventory.recipeitem':('product__branch','product__branch__business'),
         'inventory.wasterecord':('item__branch','item__branch__business'),
@@ -120,7 +117,6 @@ class BaseVS(viewsets.ModelViewSet):
         'purchasing.purchaseitem':('invoice__branch','invoice__branch__business'),
         'purchasing.supplierpayment':('supplier__branch','supplier__branch__business'),
         'accounting.expensecategory':('branch','branch__business'),
-        'accounting.bankaccount':('branch','branch__business'),
         'accounting.expense':('branch','branch__business'),
         'accounting.fixedoverhead':('branch','branch__business'),
         'accounting.fiscalsettings':('branch','branch__business'),
@@ -140,7 +136,6 @@ class BaseVS(viewsets.ModelViewSet):
         'loyalty.loyaltycampaign':('branch','branch__business'),
         'notifications.notification':('branch','branch__business'),
         'notifications.smsproviderconfig':('branch','branch__business'),
-        'notifications.pagerproviderconfig':('branch','branch__business'),
         'notifications.pushproviderconfig':('branch','branch__business'),
         'online_ordering.onlinemenusettings':('branch','branch__business'),
         'online_ordering.tableqrtoken':('table__hall__branch','table__hall__branch__business'),
@@ -230,12 +225,6 @@ class BaseVS(viewsets.ModelViewSet):
         def scrub(value,key=''):
             if key and any(part in key.lower() for part in sensitive):
                 return '***'
-            if isinstance(value,Decimal):
-                return str(value)
-            if isinstance(value,(date,datetime,time)):
-                return value.isoformat()
-            if isinstance(value,UUID):
-                return str(value)
             if isinstance(value,dict):
                 return {str(k):scrub(v,str(k)) for k,v in value.items()}
             if isinstance(value,(list,tuple)):
@@ -247,21 +236,25 @@ class BaseVS(viewsets.ModelViewSet):
         log_action(
             actor=self.request.user,branch=getattr(instance,'branch',None),action=action,
             entity=instance,before=self._audit_payload(before),after=self._audit_payload(after),
-            metadata={'model':instance._meta.label_lower,'source':'settings-dashboard'},request=self.request
+            metadata={'model':instance._meta.label_lower,'source':'dashboard-api'},request=self.request
         )
 
     def perform_create(self,serializer):
         self._assert_write_permission()
         self._assert_write_scope(serializer.validated_data)
         instance=serializer.save()
-        self._log_config_change(instance=instance,action='CONFIG_CREATED',after=self.get_serializer(instance).data)
+        self._log_config_change(
+            instance=instance,action='CONFIG_CREATED',after=self.get_serializer(instance).data
+        )
 
     def perform_update(self,serializer):
         self._assert_write_permission()
         self._assert_write_scope(serializer.validated_data,serializer.instance)
         before=self.get_serializer(serializer.instance).data
         instance=serializer.save()
-        self._log_config_change(instance=instance,action='CONFIG_UPDATED',before=before,after=self.get_serializer(instance).data)
+        self._log_config_change(
+            instance=instance,action='CONFIG_UPDATED',before=before,after=self.get_serializer(instance).data
+        )
 
     def destroy(self,request,*args,**kwargs):
         if not self.cafino_allow_destroy:
