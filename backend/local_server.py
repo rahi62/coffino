@@ -1,8 +1,10 @@
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
 import sys
+import tempfile
 from datetime import datetime, timezone
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')
@@ -114,6 +116,37 @@ def restore_sqlite_backup(source,target):
     }
 
 
+def backup_restore_drill(source,workdir=None):
+    source=os.path.abspath(str(source))
+    source_check=verify_sqlite_backup(source)
+    if not source_check['ok']:
+        return {'ok':False,'stage':'source-verification','source':source_check,'error':'Operational database is not a valid Cafino SQLite database'}
+    root=tempfile.mkdtemp(prefix='cafino-restore-drill-',dir=workdir or None)
+    backup_path=os.path.join(root,'backup.sqlite3')
+    restored_path=os.path.join(root,'restored.sqlite3')
+    try:
+        backup_check=sqlite_backup(source,backup_path)
+        if not backup_check['ok']:
+            return {'ok':False,'stage':'backup','source':source_check,'backup':backup_check,'error':'Temporary backup failed verification'}
+        restore_result=restore_sqlite_backup(backup_path,restored_path)
+        if not restore_result['ok']:
+            return {'ok':False,'stage':'restore','source':source_check,'backup':backup_check,'restore':restore_result,'error':'Temporary restore failed verification'}
+        restored_check=restore_result['restored']
+        return {
+            'ok':True,
+            'stage':'complete',
+            'source_sha256':source_check['sha256'],
+            'backup_sha256':backup_check['sha256'],
+            'restored_sha256':restored_check['sha256'],
+            'source_size_bytes':source_check['size_bytes'],
+            'backup_size_bytes':backup_check['size_bytes'],
+            'restored_size_bytes':restored_check['size_bytes'],
+            'verified_at':datetime.now(timezone.utc).isoformat(),
+        }
+    finally:
+        shutil.rmtree(root,ignore_errors=True)
+
+
 def _emit(payload,exit_code=None):
     print(json.dumps(payload,ensure_ascii=False))
     if exit_code is not None:
@@ -137,6 +170,10 @@ if __name__=='__main__':
     if '--restore' in sys.argv:
         source=sys.argv[sys.argv.index('--restore')+1]
         result=restore_sqlite_backup(source,db_path())
+        _emit(result,0 if result['ok'] else 2)
+    if '--drill-backup' in sys.argv:
+        workdir=sys.argv[sys.argv.index('--drill-backup')+1] if sys.argv.index('--drill-backup')+1<len(sys.argv) else None
+        result=backup_restore_drill(db_path(),workdir)
         _emit(result,0 if result['ok'] else 2)
     call_command('migrate',interactive=False)
     call_command('collectstatic',interactive=False,verbosity=0)
