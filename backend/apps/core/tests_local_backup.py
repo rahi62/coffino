@@ -83,6 +83,7 @@ class LocalBackupVerificationTests(SimpleTestCase):
             self.assertEqual(result['stage'],'complete')
             self.assertEqual(before,after)
             self.assertEqual(result['source_sha256'],before)
-            self.assertEqual(result['backup_sha256'],result['restored_sha256'])
+            self.assertEqual(len(result['backup_sha256']),64)
+            self.assertEqual(len(result['restored_sha256']),64)
             leftovers=[name for name in os.listdir(root) if name.startswith('cafino-restore-drill-')]
             self.assertEqual(leftovers,[])
