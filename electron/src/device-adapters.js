@@ -11,7 +11,7 @@ const ADAPTERS={
     {key:"VENDOR_SDK",label:"Vendor pager SDK",status:"planned",mode:"sdk",description:"Requires the vendor SDK/bridge"},
   ],
   POS:[
-    {key:"MANUAL",label:"Manual POS terminal",status:"ready",mode:"manual",description:"Operator enters the amount on the terminal"},
+    {key:"MANUAL",label:"Manual POS terminal",status:"manual",mode:"manual",description:"Operator enters the amount on the terminal"},
     {key:"HTTP_BRIDGE",label:"Local HTTP POS bridge",status:"configurable",mode:"bridge",description:"POSTs a sale request to a local/private vendor bridge"},
     {key:"TCP_JSON",label:"Local TCP JSON POS bridge",status:"configurable",mode:"bridge",description:"Sends one JSON request/response over a private TCP endpoint"},
     {key:"EXEC_BRIDGE",label:"Vendor helper executable",status:"configurable",mode:"bridge",description:"Runs a local vendor helper executable without a shell"},
@@ -51,7 +51,7 @@ function adapterRuntimeStatus(key,env=process.env){
 }
 function registryPayload(env=process.env){
   const printer=selected(env,"PRINTER","SYSTEM"),pager=selected(env,"PAGER","NONE"),pos=selected(env,"POS","MANUAL");
-  const group=(key,value)=>({selected:value,adapters:ADAPTERS[key].map(x=>({...x,status:key==="POS"?adapterRuntimeStatus(x.key,env):x.status,selected:x.key===value}))});
+  const group=(key,value)=>({selected:value,adapters:ADAPTERS[key].map(x=>({...x,id:x.key,status:key==="POS"?adapterRuntimeStatus(x.key,env):x.status,selected:x.key===value}))});
   return{ok:true,groups:{PRINTER:group("PRINTER",printer),PAGER:group("PAGER",pager),POS:group("POS",pos)}};
 }
 function callPager(pager,env=process.env){
