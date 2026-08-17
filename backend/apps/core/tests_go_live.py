@@ -28,7 +28,7 @@ class GoLiveGuardTests(TestCase):
         self.assertEqual(profiles['LOCAL']['database'],'SQLite محلی')
         self.assertIn('DATABASE_URL',profiles['SAAS']['environment_template'])
 
-    @override_settings(DEBUG=False,SECRET_KEY='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',ENVIRONMENT='local',ALLOWED_HOSTS=['127.0.0.1','localhost'],SECURE_SSL_REDIRECT=False)
+    @override_settings(DEBUG=False,SECRET_KEY='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',ENVIRONMENT='local',ALLOWED_HOSTS=['127.0.0.1','localhost','testserver'],SECURE_SSL_REDIRECT=False)
     def test_local_business_can_be_delivery_ready_when_state_is_explicit(self):
         self.write_explicit_module_state()
         response=self.client_for(self.owner).get('/api/v1/settings/go-live/')
@@ -40,7 +40,7 @@ class GoLiveGuardTests(TestCase):
         self.assertEqual(checks['module_state']['status'],'ok')
         self.assertEqual(body['next_action'],'ready_for_delivery')
 
-    @override_settings(DEBUG=False,SECRET_KEY='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',ENVIRONMENT='local',ALLOWED_HOSTS=['127.0.0.1','localhost'],SECURE_SSL_REDIRECT=False)
+    @override_settings(DEBUG=False,SECRET_KEY='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',ENVIRONMENT='local',ALLOWED_HOSTS=['127.0.0.1','localhost','testserver'],SECURE_SSL_REDIRECT=False)
     def test_implicit_module_state_blocks_go_live(self):
         BusinessModule.objects.create(business=self.business,key='CORE',enabled=True)
         response=self.client_for(self.owner).get('/api/v1/settings/go-live/')
@@ -55,7 +55,7 @@ class GoLiveGuardTests(TestCase):
         DEBUG=False,
         SECRET_KEY='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
         ENVIRONMENT='local',
-        ALLOWED_HOSTS=['*'],
+        ALLOWED_HOSTS=['*','testserver'],
         CORS_ALLOWED_ORIGINS=['http://app.example.com'],
         SECURE_SSL_REDIRECT=False,
     )
