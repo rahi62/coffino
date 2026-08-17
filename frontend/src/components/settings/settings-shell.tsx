@@ -35,4 +35,4 @@ function Inner({children}:{children:React.ReactNode}){
    </div>
  </div>
 }
-export default function SettingsShell({children}:{children:React.ReactNode}){return <SettingsProvider><Inner>{children}</SettingsProvider>}
+export default function SettingsShell({children}:{children:React.ReactNode}){return <SettingsProvider><Inner>{children}</Inner></SettingsProvider>}
