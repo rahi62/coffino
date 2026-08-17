@@ -51,6 +51,27 @@ class GoLiveGuardTests(TestCase):
         self.assertEqual(module_check['status'],'error')
         self.assertIn('POS',module_check['detail'])
 
+    @override_settings(
+        DEBUG=False,
+        SECRET_KEY='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        ENVIRONMENT='local',
+        ALLOWED_HOSTS=['*'],
+        CORS_ALLOWED_ORIGINS=['http://app.example.com'],
+        SECURE_SSL_REDIRECT=False,
+    )
+    def test_saas_profile_rejects_insecure_environment(self):
+        self.business.deployment_type='SAAS';self.business.save(update_fields=['deployment_type','updated_at'])
+        self.write_explicit_module_state()
+        response=self.client_for(self.owner).get('/api/v1/settings/go-live/')
+        self.assertEqual(response.status_code,200)
+        body=response.json()
+        self.assertFalse(body['summary']['ready'])
+        checks={row['key']:row for row in body['server_checks']}
+        self.assertEqual(checks['environment_mode']['status'],'error')
+        self.assertEqual(checks['allowed_hosts']['status'],'error')
+        self.assertEqual(checks['cors_https']['status'],'error')
+        self.assertEqual(checks['ssl_redirect']['status'],'error')
+
     def test_operational_user_cannot_view_delivery_guard(self):
         client=self.client_for(self.waiter)
         self.assertEqual(client.get('/api/v1/settings/go-live/').status_code,403)
