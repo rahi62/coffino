@@ -4,10 +4,11 @@ from django.utils.text import slugify
 from apps.audit.services import log_action
 from apps.businesses.models import Branch, Business, BusinessModule
 from apps.cashier.models import CashRegister
+from apps.core.settings_readiness import settings_readiness_payload
 from apps.dining.models import Hall, Table
 from apps.kitchen.models import PreparationStation
+from apps.online_ordering.models import OnlineMenuSettings
 from apps.online_ordering.services import ensure_settings
-from apps.core.settings_readiness import settings_readiness_payload
 
 
 PRESETS = {
@@ -218,11 +219,10 @@ def apply_onboarding_preset(*, business, actor, payload, request=None):
             created['stations'] += 1
 
     if 'ONLINE_ORDERING' in enabled_modules and payload.get('create_online_settings', True) is not False:
-        _, existed = None, False
         try:
             branch.online_menu_settings
             existed = True
-        except Exception:
+        except OnlineMenuSettings.DoesNotExist:
             existed = False
         ensure_settings(branch)
         created['online_settings'] = not existed
