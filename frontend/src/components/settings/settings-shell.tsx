@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import {usePathname} from "next/navigation";
-import {Building2,Store,Armchair,ReceiptText,Boxes,Globe2,MessageSquare,UsersRound,Settings2,ChevronLeft,CheckCircle2} from "lucide-react";
+import {Building2,Store,Armchair,ReceiptText,Boxes,Globe2,MessageSquare,UsersRound,Settings2,ChevronLeft,CheckCircle2,ShieldCheck} from "lucide-react";
 import {SettingsProvider,useSettings} from "./settings-context";
 
 const nav=[
  ["/settings","نمای کلی",Settings2,null],
  ["/settings/onboarding","راه‌اندازی هوشمند",CheckCircle2,"business.manage"],
+ ["/settings/go-live","Go-Live و تحویل",ShieldCheck,"settings.manage"],
  ["/settings/business","کسب‌وکار و ماژول‌ها",Building2,"business.manage"],
  ["/settings/branches","شعب و صندوق‌ها",Store,"branches.manage"],
  ["/settings/dining","سالن و تعریف میز",Armchair,"settings.manage"],
@@ -34,4 +35,4 @@ function Inner({children}:{children:React.ReactNode}){
    </div>
  </div>
 }
-export default function SettingsShell({children}:{children:React.ReactNode}){return <SettingsProvider><Inner>{children}</Inner></SettingsProvider>}
+export default function SettingsShell({children}:{children:React.ReactNode}){return <SettingsProvider><Inner>{children}</SettingsProvider>}
