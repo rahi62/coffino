@@ -1,4 +1,5 @@
 import os
+import re
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -7,6 +8,23 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.businesses.models import Branch, Business
+
+
+def _validate_bootstrap_password(password, *, user, business_name):
+    if len(password) < 12:
+        raise CommandError("Owner password must be at least 12 characters.")
+    if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        raise CommandError("Owner password must contain at least one Latin letter and one digit.")
+    lowered = password.casefold()
+    if user.username and user.username.casefold() in lowered:
+        raise CommandError("Owner password must not contain the username.")
+    normalized_business = "".join(str(business_name).casefold().split())
+    if len(normalized_business) >= 4 and normalized_business in "".join(lowered.split()):
+        raise CommandError("Owner password must not contain the business name.")
+    try:
+        validate_password(password, user=user)
+    except ValidationError as exc:
+        raise CommandError("Password validation failed: " + "; ".join(exc.messages)) from exc
 
 
 class Command(BaseCommand):
@@ -45,17 +63,13 @@ class Command(BaseCommand):
             raise CommandError("More than one business has this exact name; use a unique business name before bootstrapping.")
         if businesses:
             business = businesses[0]
-            changed = []
-            if not business.is_active:
-                business.is_active = True
-                changed.append("is_active")
             if business.deployment_type != deployment_type:
-                # Do not silently mutate an existing tenant profile; a mismatched deployment is likely operator error.
                 raise CommandError(
                     f"Existing business deployment_type is {business.deployment_type}, not {deployment_type}."
                 )
-            if changed:
-                business.save(update_fields=[*changed, "updated_at"])
+            if not business.is_active:
+                business.is_active = True
+                business.save(update_fields=["is_active", "updated_at"])
             business_created = False
         else:
             business = Business.objects.create(
@@ -66,14 +80,18 @@ class Command(BaseCommand):
             )
             business_created = True
 
-        branch, branch_created = Branch.objects.get_or_create(
-            business=business,
-            name=branch_name,
-            defaults={"is_active": True},
-        )
-        if not branch.is_active:
-            branch.is_active = True
-            branch.save(update_fields=["is_active", "updated_at"])
+        branches = list(Branch.objects.filter(business=business, name=branch_name).order_by("id")[:2])
+        if len(branches) > 1:
+            raise CommandError("More than one branch has this exact name in the business; resolve duplicates first.")
+        if branches:
+            branch = branches[0]
+            branch_created = False
+            if not branch.is_active:
+                branch.is_active = True
+                branch.save(update_fields=["is_active", "updated_at"])
+        else:
+            branch = Branch.objects.create(business=business, name=branch_name, is_active=True)
+            branch_created = True
 
         existing = User.objects.filter(username=username).first()
         if existing:
@@ -89,14 +107,11 @@ class Command(BaseCommand):
             if options["reset_password"]:
                 if not password:
                     raise CommandError("Password is required when --reset-password is used.")
-                try:
-                    validate_password(password, user=existing)
-                except ValidationError as exc:
-                    raise CommandError("Password validation failed: " + "; ".join(exc.messages)) from exc
+                _validate_bootstrap_password(password, user=existing, business_name=business_name)
                 existing.set_password(password)
                 changed.append("password")
             if changed:
-                existing.save(update_fields=[*changed, "updated_at"] if hasattr(existing, "updated_at") else changed)
+                existing.save(update_fields=changed)
             self.stdout.write(
                 self.style.SUCCESS(
                     f"OWNER already exists; reused business={business.id}, branch={branch.id}, user={existing.id}."
@@ -116,10 +131,7 @@ class Command(BaseCommand):
             role=User.Role.OWNER,
             is_active=True,
         )
-        try:
-            validate_password(password, user=candidate)
-        except ValidationError as exc:
-            raise CommandError("Password validation failed: " + "; ".join(exc.messages)) from exc
+        _validate_bootstrap_password(password, user=candidate, business_name=business_name)
         candidate.set_password(password)
         candidate.save()
 
