@@ -36,7 +36,8 @@ for path in python_files:
                 seen[node.name]=node.lineno
 
 
-# Migration integrity
+# Migration integrity. Runtime CI is authoritative (`makemigrations --check`, `migrate`).
+# Static validation intentionally does not try to emulate Python scope inside RunPython functions.
 apps_root=ROOT/'backend/apps'
 migration_apps=[]
 concrete_models=[]
@@ -65,48 +66,28 @@ for app in sorted(migration_apps):
     if not migration_dir.exists():
         fail(f'Missing migrations directory for app: {app}')
         continue
-    initial=migration_dir/'0001_initial.py'
-    relations=migration_dir/'0002_relations.py'
-    constraints=migration_dir/'0003_constraints.py'
-    for required in [initial,relations,constraints]:
+    # These are the project's baseline migration stages. New models may correctly be added later.
+    for required_name in ['0001_initial.py','0002_relations.py','0003_constraints.py']:
+        required=migration_dir/required_name
         if not required.exists():
             fail(f'Missing committed migration: {required.relative_to(ROOT)}')
-    if initial.exists():
-        text=read(initial)
-        for model_app,model_name in [x for x in concrete_models if x[0]==app]:
-            if f"name='{model_name}'" not in text and f'name="{model_name}"' not in text:
-                fail(f'Model {app}.{model_name} missing from 0001_initial.py')
+    numeric=sorted(migration_dir.glob('[0-9]*.py'))
+    all_text='\n'.join(read(path) for path in numeric)
+    for model_app,model_name in [x for x in concrete_models if x[0]==app]:
+        single=f"name='{model_name}'"
+        double=f'name="{model_name}"'
+        if single not in all_text and double not in all_text:
+            fail(f'Model {app}.{model_name} is not created by any committed migration')
 
 migration_files=list(apps_root.glob('*/migrations/[0-9]*.py'))
-builtins_set=set(dir(builtins))
 for path in migration_files:
     try:
         tree=ast.parse(read(path),filename=str(path))
     except Exception as exc:
         fail(f'Migration syntax: {path.relative_to(ROOT)}: {exc}')
         continue
-    imported=set();defined=set()
-    for node in tree.body:
-        if isinstance(node,ast.Import):
-            for alias in node.names:
-                imported.add(alias.asname or alias.name.split('.')[0])
-        elif isinstance(node,ast.ImportFrom):
-            for alias in node.names:
-                imported.add(alias.asname or alias.name)
-        elif isinstance(node,(ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef)):
-            defined.add(node.name)
-        elif isinstance(node,(ast.Assign,ast.AnnAssign)):
-            targets=node.targets if isinstance(node,ast.Assign) else [node.target]
-            for target in targets:
-                if isinstance(target,ast.Name):
-                    defined.add(target.id)
-    allowed=imported|defined|builtins_set|{'True','False','None'}
-    unknown=sorted({
-        node.id for node in ast.walk(tree)
-        if isinstance(node,ast.Name) and isinstance(node.ctx,ast.Load) and node.id not in allowed
-    })
-    if unknown:
-        fail(f"Unresolved migration references: {path.relative_to(ROOT)} -> {', '.join(unknown)}")
+    # Validate literal dependencies that point to Cafino apps. Third-party/Django dependencies
+    # are resolved by installed packages in runtime CI.
     for node in ast.walk(tree):
         if not isinstance(node,ast.Assign):
             continue
@@ -120,7 +101,6 @@ for path in migration_files:
             if not all(isinstance(x,ast.Constant) and isinstance(x.value,str) for x in dep.elts):
                 continue
             dep_app,dep_name=(x.value for x in dep.elts)
-            # Dependencies on Django/contrib or third-party apps are resolved by installed packages in CI.
             if not (apps_root/dep_app).exists():
                 continue
             target=apps_root/dep_app/'migrations'/f'{dep_name}.py'
@@ -141,7 +121,7 @@ if root_app.exists():
 frontend_sources=[p for p in (frontend/'src').rglob('*') if p.is_file() and p.suffix in {'.ts','.tsx','.js','.jsx','.css'}]
 for path in frontend_sources:
     text=read(path)
-    if re.search(r'''(?:from\s+|import\s*\(\s*|require\(\s*)["']next/font(?:/google)?["']''', text):
+    if re.search(r'''(?:from\s+|import\s*\(\s*|require\(\s*)["']next/font(?:/google)?["']''',text):
         fail(f'Network/font dependency forbidden for local-first build: {path.relative_to(ROOT)}')
     if 'CoffeeSan' in text or 'Coffee San' in text:
         fail(f'Stale CoffeeSan identity found: {path.relative_to(ROOT)}')
@@ -183,11 +163,12 @@ try:
                 fail(f'BaseVS missing explicit read permission: {cls.name}')
 except Exception as exc:
     fail(f'Unable to inspect BaseVS read permissions: {exc}')
+
 for path in (ROOT/'backend/apps').rglob('*.py'):
     if '/migrations/' in path.as_posix():
         continue
     text=read(path)
-    for forbidden in ['Branch.objects.first()', 'Business.objects.first()', 'request.user.branch or']:
+    for forbidden in ['Branch.objects.first()','Business.objects.first()','request.user.branch or']:
         if forbidden in text:
             fail(f'Unsafe tenant fallback {forbidden} in {path.relative_to(ROOT)}')
 accounts_models=read(ROOT/'backend/apps/accounts/models.py')

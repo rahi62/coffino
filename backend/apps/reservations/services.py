@@ -32,7 +32,9 @@ def create_reservation(*,branch,customer_name,phone,party_size,reserved_for,dura
 
 @transaction.atomic
 def seat_reservation(reservation,*,user=None):
-    r=Reservation.objects.select_for_update().select_related('table').get(pk=reservation.pk)
+    # Lock Reservation itself only. `table` is nullable, so PostgreSQL cannot apply
+    # FOR UPDATE to the LEFT JOIN. The chosen Table row is locked explicitly below.
+    r=Reservation.objects.select_for_update(of=('self',)).select_related('table').get(pk=reservation.pk)
     if r.status not in [Reservation.Status.PENDING,Reservation.Status.CONFIRMED]:raise ValueError('رزرو قابل پذیرش نیست')
     table=r.table
     if not table:raise ValueError('برای رزرو میز تعیین نشده است')

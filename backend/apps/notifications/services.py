@@ -163,7 +163,9 @@ def _send_push(notification):
 
 @transaction.atomic
 def process_notification(notification):
-    n=Notification.objects.select_for_update().select_related('branch','order').get(pk=notification.pk)
+    # Lock only Notification itself. `order` is nullable and PostgreSQL rejects FOR UPDATE
+    # on a nullable outer-joined relation.
+    n=Notification.objects.select_for_update(of=('self',)).select_related('branch','order').get(pk=notification.pk)
     if n.status in [Notification.Status.SENT,Notification.Status.CANCELLED]:
         return n
     n.status=Notification.Status.PROCESSING
