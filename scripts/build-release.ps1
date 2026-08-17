@@ -1,6 +1,7 @@
 param(
   [switch]$Production,
-  [switch]$AllowUnsigned
+  [switch]$AllowUnsigned,
+  [ValidateSet("stable","beta")][string]$Channel="stable"
 )
 
 $ErrorActionPreference="Stop"
@@ -25,10 +26,23 @@ function Write-Utf8NoBom([string]$Path,[string]$Text) {
 if (!(Test-Path "$backend\.venv")) { throw "Run scripts/setup-local.ps1 first." }
 
 $updateUrl=""
+$updateChannel=if($Channel -eq "beta"){"beta"}else{"latest"}
 $licensePublicKeyPath=""
+$packageJson=Get-Content "$electron\package.json" -Raw | ConvertFrom-Json
+$version=[string]$packageJson.version
+
 if ($Production) {
-  $updateUrl=Require-Env "CAF_INO_UPDATE_URL"
-  if ($updateUrl -notmatch '^https://') { throw "CAF_INO_UPDATE_URL must use HTTPS." }
+  if($Channel -eq "stable" -and $version -notmatch '^\d+\.\d+\.\d+$') { throw "Stable release version must be plain SemVer, e.g. 1.2.0." }
+  if($Channel -eq "beta" -and $version -notmatch '^\d+\.\d+\.\d+-beta(?:\.[0-9A-Za-z.-]+)?$') { throw "Beta release version must contain -beta, e.g. 1.2.0-beta.1." }
+
+  $baseUrl=Env-Or "CAF_INO_UPDATE_BASE_URL" ""
+  if ([string]::IsNullOrWhiteSpace($baseUrl)) {
+    $legacy=Require-Env "CAF_INO_UPDATE_URL"
+    $baseUrl=$legacy -replace '/(stable|beta)/?$',''
+  }
+  if ($baseUrl -notmatch '^https://') { throw "CAF_INO_UPDATE_BASE_URL must use HTTPS." }
+  $updateUrl="$($baseUrl.TrimEnd('/'))/$Channel"
+
   $licensePublicKeyPath=Require-Env "CAF_INO_LICENSE_PUBLIC_KEY_PATH"
   if (!(Test-Path $licensePublicKeyPath)) { throw "CAF_INO_LICENSE_PUBLIC_KEY_PATH does not exist: $licensePublicKeyPath" }
   if (!$AllowUnsigned) {
@@ -64,6 +78,7 @@ if (Test-Path "public") { Copy-Item "public" "$electron\release-resources\fronte
 New-Item "$electron\release-resources\config" -ItemType Directory -Force | Out-Null
 $config=[ordered]@{
   updateUrl=$updateUrl
+  releaseChannel=$Channel
   enforceLicense=[bool]$Production
   licensePublicKey=if($Production){"config/license-public-key.pem"}else{""}
   backupIntervalHours=[int](Env-Or "CAF_INO_BACKUP_INTERVAL_HOURS" 24)
@@ -77,16 +92,24 @@ Set-Location $electron
 $env:CAF_INO_PRODUCTION_BUILD=if($Production){"1"}else{"0"}
 $env:CAF_INO_ALLOW_UNSIGNED=if($AllowUnsigned){"1"}else{"0"}
 $env:CAF_INO_UPDATE_URL=$updateUrl
+$env:CAF_INO_UPDATE_CHANNEL=$updateChannel
 npm install
 npm run test:release
-npm run build
+if($Production){
+  npx --no-install electron-builder --config electron-builder.config.cjs --win nsis --publish always
+}else{
+  npm run build
+}
 
 $releaseDir="$electron\release"
-$manifest=[ordered]@{created_at=(Get-Date).ToUniversalTime().ToString("o");production=[bool]$Production;unsigned=[bool]$AllowUnsigned;artifacts=@()}
+$metadataName=if($updateChannel -eq "beta"){"beta.yml"}else{"latest.yml"}
+if($Production -and !(Test-Path "$releaseDir\$metadataName")) { throw "Expected update metadata was not generated: $metadataName" }
+
+$manifest=[ordered]@{created_at=(Get-Date).ToUniversalTime().ToString("o");production=[bool]$Production;unsigned=[bool]$AllowUnsigned;channel=$Channel;update_channel=$updateChannel;update_url=$updateUrl;version=$version;artifacts=@()}
 Get-ChildItem $releaseDir -File | Where-Object { $_.Extension -in '.exe','.yml','.blockmap' } | ForEach-Object {
   $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   $manifest.artifacts+=@{name=$_.Name;size=$_.Length;sha256=$hash}
 }
 Write-Utf8NoBom "$releaseDir\release-manifest.json" ($manifest|ConvertTo-Json -Depth 6)
-Write-Host "Release created under electron\release" -ForegroundColor Green
+Write-Host "Release created under electron\release for channel $Channel" -ForegroundColor Green
 if($Production -and !$AllowUnsigned){Write-Host "Production signing gate was required." -ForegroundColor Green}
