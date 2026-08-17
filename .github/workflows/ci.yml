@@ -59,6 +59,7 @@ jobs:
       - run: npm install
       - run: node --check src/main.js
       - run: node --check src/preload.js
+      - run: node --check src/device-adapters.js
 
   static-release-gate:
     runs-on: ubuntu-latest
