@@ -60,6 +60,7 @@ jobs:
       - run: node --check src/main.js
       - run: node --check src/preload.js
       - run: node --check src/device-adapters.js
+      - run: node src/device-adapters.test.js
 
   static-release-gate:
     runs-on: ubuntu-latest
