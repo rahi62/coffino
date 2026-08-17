@@ -1,14 +1,13 @@
-import re
-from datetime import timedelta
+import hashlib
+from datetime import timedelta, timezone as dt_timezone
 
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import SimpleRateThrottle
 
 from apps.accounts.permissions import has_perm
 from apps.businesses.models import Branch, Business
@@ -21,8 +20,16 @@ from .services import (
 )
 
 
-class OpsDeviceThrottle(AnonRateThrottle):
+class OpsDeviceThrottle(SimpleRateThrottle):
     scope='ops_device'
+
+    def get_cache_key(self,request,view):
+        token=_bearer(request)
+        if token:
+            ident='token:'+hashlib.sha256(token.encode('utf-8')).hexdigest()[:24]
+        else:
+            ident='ip:'+self.get_ident(request)
+        return self.cache_format%{'scope':self.scope,'ident':ident}
 
 
 def _reject_unknown(request,allowed):
@@ -130,9 +137,11 @@ def device_heartbeat(request):
         parsed=parse_datetime(str(backup_at))
         if parsed is None:
             return Response({'detail':'Invalid last_backup_at.'},status=400)
+        if timezone.is_naive(parsed):
+            parsed=timezone.make_aware(parsed,dt_timezone.utc)
         device.last_backup_at=parsed
-    if 'last_backup_ok' in request.data:
-        device.last_backup_ok=bool(request.data.get('last_backup_ok'))
+    if isinstance(request.data.get('last_backup_ok'),bool):
+        device.last_backup_ok=request.data['last_backup_ok']
     device.last_seen_at=timezone.now()
     device.save()
     diagnostic=next_diagnostic_request(device)
@@ -180,6 +189,8 @@ def device_event(request):
         parsed=parse_datetime(str(request.data.get('occurred_at')))
         if parsed is None:
             return Response({'detail':'Invalid occurred_at.'},status=400)
+        if timezone.is_naive(parsed):
+            parsed=timezone.make_aware(parsed,dt_timezone.utc)
         occurred_at=parsed
     event=DeviceEvent.objects.create(
         installation=device,event_type=event_type,severity=severity,
@@ -260,7 +271,7 @@ def management_request_diagnostic(request,pk):
 @permission_classes([IsAuthenticated])
 def management_diagnostics(request,pk):
     device=get_object_or_404(DeviceInstallation,pk=pk)
-    if not (request.user.is_superuser or (has_perm(request.user,'operations.view') and device in _scope_devices(request.user))):
+    if not request.user.is_superuser and not _scope_devices(request.user).filter(pk=device.pk).exists():
         return Response({'detail':'Permission denied.'},status=403)
     return Response(DiagnosticRequestSerializer(device.diagnostic_requests.all()[:20],many=True).data)
 
