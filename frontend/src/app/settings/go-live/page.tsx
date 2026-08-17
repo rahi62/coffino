@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useState} from "react";
 import {AlertTriangle,CheckCircle2,Database,HardDrive,RefreshCw,ServerCog,ShieldCheck,Usb,Workflow} from "lucide-react";
 
+import {useSettings} from "@/components/settings/settings-context";
 import {api} from "@/lib/api";
 
 type Check={key:string;title:string;status:"ok"|"warning"|"error";detail:string;category:string;blocking:boolean;branch?:number;branch_name?:string;mode?:string};
@@ -13,40 +14,66 @@ type GoLive={
   summary:{ready:boolean;score:number;blockers:number;warnings:number;total:number};
   server_checks:Check[];
   business_checks:Check[];
-  readiness:{overall:{score:number;completed:number;total:number;blocking:number}};
+  readiness:{overall:{score:number;completed:number;total:number;blocking:number};active_modules:string[]};
   integration_checks:Check[];
   next_action:string;
 };
 type LocalCheck={key:string;status:"ok"|"warning"|"error";message:string;details?:Record<string,unknown>};
-type Preflight={ok:boolean;packaged:boolean;platform:string;version:string;checks:LocalCheck[];adapters:Record<string,{selected:string;adapters:Array<{id:string;label:string;status:string;selected:boolean;description:string}>}>};
+type Adapter={id:string;label:string;status:string;selected:boolean;description:string};
+type AdapterGroup={selected:string;adapters:Adapter[]};
+type Preflight={ok:boolean;packaged:boolean;platform:string;version:string;checks:LocalCheck[];adapters:Record<string,AdapterGroup>};
+type PrinterRuntime={status:"ok"|"warning"|"error"|"skipped";message:string;details?:Record<string,unknown>};
 type BackupResult={ok:boolean;canceled?:boolean;path?:string;sha256?:string;size_bytes?:number;integrity?:string;foreign_key_violations?:number;missing_tables?:string[];error?:string;emergency?:string};
 
 export default function GoLivePage(){
+  const {selectedBranchId}=useSettings();
   const [data,setData]=useState<GoLive|null>(null);
   const [profiles,setProfiles]=useState<Profile[]>([]);
   const [local,setLocal]=useState<Preflight|null>(null);
+  const [printerRuntime,setPrinterRuntime]=useState<PrinterRuntime|null>(null);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [backup,setBackup]=useState<BackupResult|null>(null);
 
   const load=async()=>{
-    setBusy(true);setMessage("");
+    setBusy(true);setMessage("");setPrinterRuntime(null);
     try{
       const [guard,profilePayload]=await Promise.all([
         api<GoLive>("/settings/go-live/"),
         api<{profiles:Profile[]}>("/settings/deployment-profiles/"),
       ]);
       setData(guard);setProfiles(profilePayload.profiles);
-      if(typeof window!=="undefined"&&(window as any).cafino?.preflight){
-        try{setLocal(await (window as any).cafino.preflight())}catch{}
+      const bridge=typeof window!=="undefined"?(window as any).cafino:null;
+      if(guard.business.deployment_type==="LOCAL"&&bridge?.preflight){
+        try{
+          const preflight=await bridge.preflight();setLocal(preflight);
+          if(guard.readiness.active_modules.includes("PRINTING")&&bridge.listPrinters&&selectedBranchId){
+            const printers=await bridge.listPrinters();
+            const names=(printers||[]).map((x:any)=>x.name||x.displayName||x.deviceName).filter(Boolean);
+            const matched=await api<{check:PrinterRuntime}>("/settings/health/printer/",{method:"POST",body:JSON.stringify({branch:selectedBranchId,devices:names})});
+            setPrinterRuntime(matched.check);
+          }
+        }catch(e:any){setMessage(`Runtime Local قابل Verify نبود: ${e?.message||e}`)}
+      }else if(guard.business.deployment_type!=="LOCAL"){
+        setLocal(null);
       }
     }catch(e:any){setMessage(e.message||"خطا در Go-Live Guard");}
     finally{setBusy(false)}
   };
-  useEffect(()=>{load()},[]);
+  useEffect(()=>{load()},[selectedBranchId]);
 
   const profile=useMemo(()=>profiles.find(x=>x.key===data?.business.deployment_type)||data?.profile||null,[profiles,data]);
-  const allChecks=[...(data?.server_checks||[]),...(data?.business_checks||[]),...(data?.integration_checks||[])];
+  const localRequired=data?.business.deployment_type==="LOCAL";
+  const printingRequired=!!data?.readiness.active_modules?.includes("PRINTING");
+  const pagerRequired=!!data?.readiness.active_modules?.includes("PAGER");
+  const pagerAdapter=local?.adapters?.PAGER?.adapters?.find(x=>x.selected)||null;
+  const posAdapter=local?.adapters?.POS?.adapters?.find(x=>x.selected)||null;
+  const runtimeErrors=local?.checks.filter(x=>x.status==="error").length||0;
+  const runtimeWarnings=local?.checks.filter(x=>x.status==="warning").length||0;
+  const pagerBlocked=localRequired&&pagerRequired&&(!pagerAdapter||pagerAdapter.status!=="ready");
+  const printerBlocked=localRequired&&printingRequired&&(!printerRuntime||printerRuntime.status!=="ok");
+  const localBlocked=localRequired&&(!local||!local.ok||pagerBlocked||printerBlocked);
+  const deliveryReady=!!data?.summary.ready&&!localBlocked;
 
   const createBackup=async()=>{
     const bridge=(window as any).cafino;if(!bridge?.createBackup)return setMessage("Backup Local فقط داخل اپ Electron قابل اجراست.");
@@ -58,23 +85,23 @@ export default function GoLivePage(){
   };
   const restoreBackup=async()=>{
     const bridge=(window as any).cafino;if(!bridge?.restoreBackup)return setMessage("Restore فقط داخل Electron Local در دسترس است.");
-    if(!window.confirm("Restore دیتابیس عملیاتی را جایگزین می‌کند. Cafino قبل از Restore یک Emergency Backup می‌سازد. ادامه می‌دهید؟"))return;
+    if(!window.confirm("Restore دیتابیس عملیاتی را جایگزین می‌کند. Cafino قبل از Restore یک Emergency Backup تأییدشده می‌سازد. ادامه می‌دهید؟"))return;
     setBusy(true);setMessage("");try{const result=await bridge.restoreBackup();setBackup(result);setMessage(result.ok?"Restore با موفقیت انجام و دیتابیس جدید دوباره Verify شد.":result.error||"Restore ناموفق بود.");}finally{setBusy(false)}
   };
 
   if(!data)return <div className="card p-6">{message||"در حال محاسبه Go-Live Guard…"}</div>;
   return <div className="space-y-5">
     <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-      <div><div className="text-xs text-[#8d8178]">Production Delivery</div><h2 className="text-3xl font-black">Go-Live Guard</h2><p className="text-sm text-[#8d8178] mt-1">بررسی نهایی محیط اجرا، تنظیمات کسب‌وکار، Integrationها، Backup و Runtime محلی قبل از تحویل به مشتری.</p></div>
+      <div><div className="text-xs text-[#8d8178]">Production Delivery</div><h2 className="text-3xl font-black">Go-Live Guard</h2><p className="text-sm text-[#8d8178] mt-1">بررسی نهایی Environment، تنظیمات کسب‌وکار، Integrationها، Backup و Runtime محلی قبل از تحویل به مشتری.</p></div>
       <button className="btn flex items-center gap-2" onClick={load} disabled={busy}><RefreshCw size={16}/>{busy?"در حال بررسی…":"بررسی مجدد"}</button>
     </div>
 
-    <div className={`card p-5 border-2 ${data.summary.ready?"border-emerald-300":"border-amber-300"}`}>
+    <div className={`card p-5 border-2 ${deliveryReady?"border-emerald-300":"border-amber-300"}`}>
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-start gap-3">{data.summary.ready?<ShieldCheck className="text-emerald-600" size={30}/>:<AlertTriangle className="text-amber-600" size={30}/>}<div><h3 className="font-black text-xl">{data.summary.ready?"آماده تحویل":"هنوز آماده Go-Live نیست"}</h3><p className="text-sm text-[#8d8178] mt-1">{data.summary.blockers} Blocker · {data.summary.warnings} Warning · پروفایل {data.business.deployment_type}</p></div></div>
-        <div className="text-left"><b className="text-4xl">{data.summary.score}%</b><div className="text-xs text-[#8d8178]">Delivery score</div></div>
+        <div className="flex items-start gap-3">{deliveryReady?<ShieldCheck className="text-emerald-600" size={30}/>:<AlertTriangle className="text-amber-600" size={30}/>}<div><h3 className="font-black text-xl">{deliveryReady?"آماده تحویل":"هنوز آماده Go-Live نیست"}</h3><p className="text-sm text-[#8d8178] mt-1">Backend: {data.summary.blockers} Blocker / {data.summary.warnings} Warning{localRequired?` · Local: ${runtimeErrors} Error / ${runtimeWarnings} Warning`:""}</p>{localRequired&&!local&&<p className="text-xs text-amber-700 mt-1">برای صدور وضعیت Ready در پروفایل Local باید همین صفحه داخل Electron دستگاه مقصد اجرا شود.</p>}{pagerBlocked&&<p className="text-xs text-red-700 mt-1">ماژول PAGER فعال است اما Adapter سخت‌افزار آماده نیست.</p>}{printerBlocked&&<p className="text-xs text-red-700 mt-1">ماژول PRINTING فعال است اما Printer Runtime تأیید نشده است.</p>}</div></div>
+        <div className="text-left"><b className="text-4xl">{data.summary.score}%</b><div className="text-xs text-[#8d8178]">Backend delivery score</div></div>
       </div>
-      <div className="h-3 rounded-full bg-[#eee6dc] overflow-hidden mt-4"><div className={`h-full ${data.summary.ready?"bg-emerald-600":"bg-amber-500"}`} style={{width:`${data.summary.score}%`}}/></div>
+      <div className="h-3 rounded-full bg-[#eee6dc] overflow-hidden mt-4"><div className={`h-full ${deliveryReady?"bg-emerald-600":"bg-amber-500"}`} style={{width:`${data.summary.score}%`}}/></div>
     </div>
 
     {profile&&<div className="card p-5">
@@ -92,16 +119,16 @@ export default function GoLivePage(){
     <div className="grid xl:grid-cols-[1fr_1fr] gap-5">
       <section className="card p-5">
         <h3 className="font-black text-lg flex items-center gap-2"><HardDrive size={20}/> Local Runtime Preflight</h3>
-        {local?<><div className="mt-4 space-y-2">{local.checks.map(x=><LocalRow key={x.key} check={x}/>)}</div><div className="mt-4 text-xs text-[#8d8178]">Electron {local.version} · {local.platform} · {local.packaged?"Packaged":"Development"}</div></>:<div className="mt-4 rounded-xl border p-4 text-sm text-[#8d8178]">این صفحه در Web/SaaS باز شده یا Electron Bridge در دسترس نیست؛ Runtime سخت‌افزاری فقط روی دستگاه Local قابل Verify است.</div>}
+        {local?<><div className="mt-4 space-y-2">{local.checks.map(x=><LocalRow key={x.key} check={x}/>)}</div>{printingRequired&&<div className="mt-3"><LocalRow check={{key:"printer_runtime",status:printerRuntime?.status==="ok"?"ok":printerRuntime?.status==="error"?"error":"warning",message:printerRuntime?.message||"Printer Runtime هنوز بررسی نشده است."}}/></div>}<div className="mt-4 text-xs text-[#8d8178]">Electron {local.version} · {local.platform} · {local.packaged?"Packaged":"Development"}</div></>:<div className="mt-4 rounded-xl border p-4 text-sm text-[#8d8178]">این صفحه در Web/SaaS باز شده یا Electron Bridge در دسترس نیست؛ برای پروفایل Local تا اجرای Preflight روی دستگاه مقصد وضعیت Ready صادر نمی‌شود.</div>}
       </section>
       <section className="card p-5">
         <h3 className="font-black text-lg flex items-center gap-2"><Usb size={20}/> Device Adapter Registry</h3>
-        {local?<div className="mt-4 space-y-3">{Object.entries(local.adapters||{}).map(([type,group])=><div key={type} className="border rounded-xl p-3"><div className="flex items-center justify-between"><b>{type}</b><span className="badge">{group.selected}</span></div><div className="text-xs text-[#8d8178] mt-2">{group.adapters.find(x=>x.selected)?.description||"Adapter انتخاب نشده"}</div></div>)}</div>:<div className="mt-4 text-sm text-[#8d8178]">Registry روی Electron Local خوانده می‌شود. POS و Pager تا انتخاب SDK/Protocol برند به‌صورت صریح Manual/Unconfigured باقی می‌مانند.</div>}
+        {local?<div className="mt-4 space-y-3">{Object.entries(local.adapters||{}).map(([type,group])=>{const selected=group.adapters.find(x=>x.selected);const blocking=type==="PAGER"&&pagerRequired&&selected?.status!=="ready";return <div key={type} className={`border rounded-xl p-3 ${blocking?"border-red-200 bg-red-50":""}`}><div className="flex items-center justify-between"><b>{type}</b><span className="badge">{group.selected} · {selected?.status||"unknown"}</span></div><div className="text-xs text-[#8d8178] mt-2">{selected?.description||"Adapter انتخاب نشده"}</div>{type==="POS"&&posAdapter?.status==="manual"&&<div className="text-xs text-amber-700 mt-2">پرداخت بانکی مجاز است اما ورود مبلغ روی ترمینال به‌صورت دستی انجام می‌شود.</div>}</div>})}</div>:<div className="mt-4 text-sm text-[#8d8178]">Registry روی Electron Local خوانده می‌شود. POS و Pager تا انتخاب SDK/Protocol برند به‌صورت صریح Manual/Unconfigured باقی می‌مانند.</div>}
       </section>
     </div>
 
     <section className="card p-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-black text-lg flex items-center gap-2"><Database size={20}/> Backup / Restore Verification</h3><p className="text-sm text-[#8d8178] mt-1">Backup Local تنها در صورت عبور از SQLite integrity_check، foreign_key_check، schema check و SHA-256 معتبر محسوب می‌شود.</p></div><div className="flex flex-wrap gap-2"><button className="btn" onClick={createBackup} disabled={busy}>ساخت Backup تأییدشده</button><button className="btn" onClick={verifyBackup} disabled={busy}>Verify فایل Backup</button><button className="btn" onClick={restoreBackup} disabled={busy}>Restore تأییدشده</button></div></div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-black text-lg flex items-center gap-2"><Database size={20}/> Backup / Restore Verification</h3><p className="text-sm text-[#8d8178] mt-1">Preflight به‌صورت خودکار یک Restore Drill موقت انجام می‌دهد. فایل Backup دستی نیز فقط پس از integrity_check، foreign_key_check، schema check و SHA-256 معتبر محسوب می‌شود.</p></div><div className="flex flex-wrap gap-2"><button className="btn" onClick={createBackup} disabled={busy}>ساخت Backup تأییدشده</button><button className="btn" onClick={verifyBackup} disabled={busy}>Verify فایل Backup</button><button className="btn" onClick={restoreBackup} disabled={busy}>Restore تأییدشده</button></div></div>
       {backup&&<div className={`mt-4 rounded-xl border p-4 ${backup.ok?"bg-emerald-50 border-emerald-200":"bg-amber-50 border-amber-200"}`}><b>{backup.ok?"Verification PASS":"Verification FAIL"}</b><div className="grid md:grid-cols-2 gap-2 text-xs mt-2"><span>Integrity: {backup.integrity||"-"}</span><span>FK violations: {backup.foreign_key_violations??"-"}</span><span>Size: {backup.size_bytes?`${Math.round(backup.size_bytes/1024)} KB`:"-"}</span><span className="truncate">SHA-256: {backup.sha256||"-"}</span></div>{backup.path&&<div className="text-xs mt-2 break-all">{backup.path}</div>}{backup.emergency&&<div className="text-xs mt-2 break-all">Emergency backup: {backup.emergency}</div>}{backup.error&&<div className="text-sm text-red-700 mt-2">{backup.error}</div>}</div>}
     </section>
 
