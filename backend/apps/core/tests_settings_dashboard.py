@@ -117,7 +117,10 @@ class SettingsDashboardTests(TestCase):
             branch=self.branch,public_slug='settings-main',is_enabled=True,accepting_orders=True,
             payment_mode=OnlineMenuSettings.PaymentMode.ONLINE
         )
-        PaymentGatewayConfig.objects.create(branch=self.branch,provider=PaymentGatewayConfig.Provider.MOCK,is_active=True)
+        PaymentGatewayConfig.objects.create(
+            branch=self.branch,provider=PaymentGatewayConfig.Provider.MOCK,is_active=True,
+            callback_base_url='http://127.0.0.1:8000'
+        )
         SmsProviderConfig.objects.create(branch=self.branch,provider_name='TEST',endpoint_url='https://sms.example.com/api',is_active=True)
         PrinterDevice.objects.create(branch=self.branch,name='رسید',system_name='Office Printer',is_active=True)
 
