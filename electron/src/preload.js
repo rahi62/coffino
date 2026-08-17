@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("cafino",{
   restoreBackup:()=>ipcRenderer.invoke("backup:restore"),
   createAutoBackup:()=>ipcRenderer.invoke("backup:autoNow"),
   releaseStatus:()=>ipcRenderer.invoke("release:status"),
+  operationsSync:()=>ipcRenderer.invoke("operations:sync"),
   importLicense:()=>ipcRenderer.invoke("license:import"),
   licenseRequestCode:()=>ipcRenderer.invoke("license:requestCode"),
   checkForUpdate:()=>ipcRenderer.invoke("update:check"),
