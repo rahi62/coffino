@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
-import {AlertTriangle,Armchair,Boxes,Building2,CheckCircle2,CircleAlert,Globe2,MessageSquare,ReceiptText,Settings2,Store,UsersRound} from "lucide-react";
+import {AlertTriangle,Armchair,Boxes,Building2,CheckCircle2,CircleAlert,Globe2,MessageSquare,ReceiptText,Settings2,ShieldCheck,Store,UsersRound} from "lucide-react";
 import {BranchReadiness,SetupCheck,useSettings} from "@/components/settings/settings-context";
 
 const cards=[
  ["/settings/onboarding","راه‌اندازی هوشمند","Preset نوع کسب‌وکار، Bootstrap امن و Health Check اتصال‌ها",Settings2,"business.manage"],
+ ["/settings/go-live","Go-Live و تحویل","Production Guard، Deployment Profile، Backup/Restore و Runtime Preflight",ShieldCheck,"settings.manage"],
  ["/settings/business","پروفایل کسب‌وکار","نام، نوع مجموعه، مدل استقرار و ماژول‌های فعال",Building2,"business.manage"],
  ["/settings/branches","شعب و صندوق‌ها","اطلاعات شعب، شماره تماس، صندوق‌های فروش",Store,"branches.manage"],
  ["/settings/dining","سالن و میزها","تعریف سالن، شماره میز و ظرفیت",Armchair,"settings.manage"],
@@ -23,7 +24,7 @@ export default function SettingsHome(){
  const pending=[...readiness.business.checks,...(branch?.checks||[])].filter(x=>x.status!=="done");
  const canOnboard=can("business.manage");
  return <div>
-  <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><h2 className="text-3xl font-black">مرکز تنظیمات</h2><p className="text-[#8d8178] mt-1">راه‌اندازی و تنظیمات روزمره کسب‌وکار از همین داشبورد انجام می‌شود؛ Django Admin فقط برای پشتیبانی پلتفرم باقی می‌ماند.</p></div>{canOnboard&&<Link href="/settings/onboarding" className="btn btn-primary">راه‌اندازی هوشمند</Link>}</div>
+  <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><h2 className="text-3xl font-black">مرکز تنظیمات</h2><p className="text-[#8d8178] mt-1">راه‌اندازی و تنظیمات روزمره کسب‌وکار از همین داشبورد انجام می‌شود؛ Django Admin فقط برای پشتیبانی پلتفرم باقی می‌ماند.</p></div><div className="flex flex-wrap gap-2">{canOnboard&&<Link href="/settings/onboarding" className="btn">راه‌اندازی هوشمند</Link>}<Link href="/settings/go-live" className="btn btn-primary">Go-Live Guard</Link></div></div>
 
   <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
    <Metric label="آمادگی راه‌اندازی" value={`${readiness.overall.score}%`} detail={`${readiness.overall.completed} از ${readiness.overall.total} مورد ضروری`}/>
@@ -35,7 +36,7 @@ export default function SettingsHome(){
   <div className="card p-5 mb-5">
    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2"><Settings2 size={20}/><h3 className="font-black text-lg">Setup Readiness</h3></div><p className="text-sm text-[#8d8178] mt-1">بر اساس ماژول‌های فعال، Cafino تنظیمات لازم هر شعبه را به‌صورت خودکار بررسی می‌کند.</p></div><div className="text-left"><b className="text-3xl">{readiness.overall.score}%</b><div className="text-xs text-[#8d8178]">آمادگی کل مجموعه</div></div></div>
    <div className="h-3 rounded-full bg-[#eee6dc] overflow-hidden mt-4"><div className="h-full bg-emerald-600 transition-all" style={{width:`${readiness.overall.score}%`}}/></div>
-   {readiness.overall.blocking>0?<div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 flex gap-2 items-start"><AlertTriangle className="text-amber-700 shrink-0" size={19}/><div className="flex-1"><b className="text-sm">{readiness.overall.blocking} تنظیم ضروری هنوز کامل نیست.</b><p className="text-xs text-amber-900/70 mt-1">Checklist زیر دقیقاً مشخص می‌کند از کدام صفحه باید هر مورد را تکمیل کنید.</p></div>{canOnboard&&<Link href="/settings/onboarding" className="btn shrink-0">Wizard</Link>}</div>:<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex gap-2 items-center"><CheckCircle2 className="text-emerald-700" size={19}/><b className="text-sm">تمام تنظیمات ضروری برای ماژول‌های فعلی کامل است.</b></div>}
+   {readiness.overall.blocking>0?<div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 flex gap-2 items-start"><AlertTriangle className="text-amber-700 shrink-0" size={19}/><div className="flex-1"><b className="text-sm">{readiness.overall.blocking} تنظیم ضروری هنوز کامل نیست.</b><p className="text-xs text-amber-900/70 mt-1">Checklist زیر دقیقاً مشخص می‌کند از کدام صفحه باید هر مورد را تکمیل کنید.</p></div>{canOnboard&&<Link href="/settings/onboarding" className="btn shrink-0">Wizard</Link>}</div>:<div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex gap-2 items-center"><CheckCircle2 className="text-emerald-700" size={19}/><div className="flex-1"><b className="text-sm">تنظیمات عملیاتی کامل است.</b><p className="text-xs text-emerald-900/70 mt-1">مرحله بعد: Go-Live Guard برای Environment، Security، Backup و Runtime.</p></div><Link href="/settings/go-live" className="btn shrink-0">بررسی تحویل</Link></div>}
   </div>
 
   <div className="grid xl:grid-cols-[1.25fr_.75fr] gap-5 mb-6">
