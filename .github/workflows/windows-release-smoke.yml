@@ -44,8 +44,8 @@ jobs:
           if (-not $installer) { throw "Installer was not produced" }
           $installDir=Join-Path $env:RUNNER_TEMP "cafino-installed-smoke"
           Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
-          & $installer.FullName /S "/D=$installDir"
-          if ($LASTEXITCODE -ne 0) { throw "Silent installer failed with exit code $LASTEXITCODE" }
+          $install=Start-Process -FilePath $installer.FullName -ArgumentList @("/S", "/D=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Silent installer failed with exit code $($install.ExitCode)" }
           $exe=Get-ChildItem $installDir -Filter "Cafino.exe" -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Installed Cafino.exe was not found under $installDir" }
           "CAF_INO_SMOKE_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
