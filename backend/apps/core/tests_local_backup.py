@@ -4,7 +4,7 @@ import tempfile
 
 from django.test import SimpleTestCase
 
-from local_server import EXPECTED_CAFINO_TABLES, restore_sqlite_backup, sqlite_backup, verify_sqlite_backup
+from local_server import EXPECTED_CAFINO_TABLES, backup_restore_drill, restore_sqlite_backup, sqlite_backup, verify_sqlite_backup
 
 
 def build_cafino_like_database(path, marker=None):
@@ -71,3 +71,18 @@ class LocalBackupVerificationTests(SimpleTestCase):
             finally:
                 connection.close()
             self.assertEqual(marker,'source-marker')
+
+    def test_restore_drill_does_not_modify_operational_database(self):
+        with tempfile.TemporaryDirectory() as root:
+            source=os.path.join(root,'operational.sqlite3')
+            build_cafino_like_database(source,marker='untouched')
+            before=verify_sqlite_backup(source)['sha256']
+            result=backup_restore_drill(source,root)
+            after=verify_sqlite_backup(source)['sha256']
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['stage'],'complete')
+            self.assertEqual(before,after)
+            self.assertEqual(result['source_sha256'],before)
+            self.assertEqual(result['backup_sha256'],result['restored_sha256'])
+            leftovers=[name for name in os.listdir(root) if name.startswith('cafino-restore-drill-')]
+            self.assertEqual(leftovers,[])
