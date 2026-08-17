@@ -1,11 +1,13 @@
 const {app,BrowserWindow,ipcMain,dialog,shell}=require("electron");
 const {spawn,spawnSync}=require("child_process");
 const path=require("path"),fs=require("fs"),crypto=require("crypto");
+const {registryPayload,callPager,sendPosAmount}=require("./device-adapters");
 let backend=null,frontend=null,notificationTimer=null,notificationWorkerBusy=false;
 
 function dataDir(){const d=app.getPath("userData");fs.mkdirSync(d,{recursive:true});return d;}
 function dbPath(){return path.join(dataDir(),"cafino.sqlite3")}
 function devBackendDir(){return path.resolve(__dirname,"../../backend")}
+function devDbPath(){return path.join(devBackendDir(),"db.sqlite3")}
 function packagedBackend(){return path.join(process.resourcesPath,"backend",process.platform==="win32"?"cafino-backend.exe":"cafino-backend")}
 function devPython(){const d=devBackendDir();return process.platform==="win32"?path.join(d,".venv","Scripts","python.exe"):path.join(d,".venv","bin","python")}
 function backendEnv(){
@@ -13,18 +15,34 @@ function backendEnv(){
   if(!fs.existsSync(secretFile))fs.writeFileSync(secretFile,crypto.randomBytes(48).toString("hex"),{mode:0o600});
   return {...process.env,DATABASE_URL:`sqlite:///${dbPath().replace(/\\/g,"/")}`,DJANGO_SECRET_KEY:fs.readFileSync(secretFile,"utf8"),DJANGO_DEBUG:"0",DJANGO_ALLOWED_HOSTS:"127.0.0.1,localhost",DJANGO_SECURE_SSL_REDIRECT:"0",CAF_INO_ENV:"local"};
 }
+function devLocalEnv(){return{...process.env,DATABASE_URL:`sqlite:///${devDbPath().replace(/\\/g,"/")}`,DJANGO_SECRET_KEY:process.env.DJANGO_SECRET_KEY||"cafino-electron-dev-runtime",DJANGO_DEBUG:"0",DJANGO_ALLOWED_HOSTS:"127.0.0.1,localhost",DJANGO_SECURE_SSL_REDIRECT:"0",CAF_INO_ENV:"local"}}
 function backendExec(args=[],opts={}){
   if(app.isPackaged){
     const exe=packagedBackend();if(!fs.existsSync(exe))return null;
     return opts.sync?spawnSync(exe,args,{env:backendEnv(),encoding:"utf8",windowsHide:true}):spawn(exe,args,{env:backendEnv(),stdio:opts.stdio||"ignore",windowsHide:true});
   }
   const py=devPython();if(!fs.existsSync(py))return null;
-  const full=["manage.py",...args];return opts.sync?spawnSync(py,full,{cwd:devBackendDir(),env:{...process.env,DATABASE_URL:`sqlite:///${path.join(devBackendDir(),"db.sqlite3").replace(/\\/g,"/")}`},encoding:"utf8"}):spawn(py,full,{cwd:devBackendDir(),env:process.env,stdio:opts.stdio||"inherit"});
+  const full=["manage.py",...args];return opts.sync?spawnSync(py,full,{cwd:devBackendDir(),env:devLocalEnv(),encoding:"utf8"}):spawn(py,full,{cwd:devBackendDir(),env:devLocalEnv(),stdio:opts.stdio||"inherit"});
+}
+function localRuntimeExec(args=[],opts={}){
+  if(app.isPackaged)return backendExec(args,opts);
+  const py=devPython(),server=path.join(devBackendDir(),"local_server.py");
+  if(!fs.existsSync(py)||!fs.existsSync(server))return null;
+  return opts.sync?spawnSync(py,[server,...args],{cwd:devBackendDir(),env:devLocalEnv(),encoding:"utf8",windowsHide:true}):spawn(py,[server,...args],{cwd:devBackendDir(),env:devLocalEnv(),stdio:opts.stdio||"ignore",windowsHide:true});
+}
+function parseCliResult(result,fallback){
+  if(!result)return{ok:false,error:fallback||"Local runtime unavailable"};
+  const stdout=String(result.stdout||"").trim();
+  if(stdout){
+    const lines=stdout.split(/\r?\n/).filter(Boolean);
+    for(let i=lines.length-1;i>=0;i--){try{return JSON.parse(lines[i])}catch{}}
+  }
+  return{ok:false,error:String(result.stderr||fallback||"Local runtime command failed").trim(),status:result.status};
 }
 function startBackend(){
   if(process.env.CAFINO_SKIP_BACKEND==="1")return;
   if(app.isPackaged)backend=backendExec([],{stdio:"ignore"});
-  else{const py=devPython();if(fs.existsSync(py))backend=spawn(py,["manage.py","runserver","127.0.0.1:8000","--noreload"],{cwd:devBackendDir(),stdio:"inherit"})}
+  else{const py=devPython();if(fs.existsSync(py))backend=spawn(py,["manage.py","runserver","127.0.0.1:8000","--noreload"],{cwd:devBackendDir(),env:devLocalEnv(),stdio:"inherit"})}
 }
 function startFrontend(){
   if(!app.isPackaged)return;
@@ -35,7 +53,7 @@ function processNotificationQueue(){
   if(notificationWorkerBusy)return;notificationWorkerBusy=true;
   let p;
   if(app.isPackaged)p=backendExec(["--process-notifications"]);
-  else{const py=devPython();if(!fs.existsSync(py)){notificationWorkerBusy=false;return};p=spawn(py,["manage.py","process_notifications"],{cwd:devBackendDir(),stdio:"ignore"})}
+  else{const py=devPython();if(!fs.existsSync(py)){notificationWorkerBusy=false;return};p=spawn(py,["manage.py","process_notifications"],{cwd:devBackendDir(),env:devLocalEnv(),stdio:"ignore"})}
   if(!p){notificationWorkerBusy=false;return}p.on("exit",()=>notificationWorkerBusy=false);p.on("error",()=>notificationWorkerBusy=false);
 }
 function startNotificationWorker(){setTimeout(processNotificationQueue,15000);notificationTimer=setInterval(processNotificationQueue,60000)}
@@ -51,19 +69,40 @@ async function createWindow(){
 }
 
 function backup(target){
-  if(app.isPackaged){const r=backendExec(["--backup",target],{sync:true});return r&&r.status===0?{ok:true}:{ok:false,error:r?.stderr||"Backup failed"}}
-  const py=devPython(),src=path.join(devBackendDir(),"db.sqlite3");if(!fs.existsSync(py)||!fs.existsSync(src))return{ok:false,error:"Local database/runtime missing"};
-  const code='import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); d=sqlite3.connect(sys.argv[2]); s.backup(d); d.close(); s.close()';const r=spawnSync(py,["-c",code,src,target],{encoding:"utf8"});return r.status===0?{ok:true}:{ok:false,error:r.stderr};
+  const r=localRuntimeExec(["--backup",target],{sync:true});
+  const parsed=parseCliResult(r,"Backup failed");
+  if(r&&r.status!==0&&parsed.ok)parsed.ok=false;
+  return parsed;
+}
+function verifyBackup(source){
+  const r=localRuntimeExec(["--verify-backup",source],{sync:true});
+  const parsed=parseCliResult(r,"Backup verification failed");
+  if(r&&r.status!==0&&parsed.ok)parsed.ok=false;
+  return parsed;
 }
 function restore(source){
+  const sourceCheck=verifyBackup(source);if(!sourceCheck.ok)return{ok:false,stage:"source-verification",verification:sourceCheck,error:sourceCheck.error||"Backup verification failed"};
+  const currentDb=app.isPackaged?dbPath():devDbPath();
   const emergency=path.join(dataDir(),`before-restore-${Date.now()}.sqlite3`);
-  if(app.isPackaged){
-    if(fs.existsSync(dbPath())){const b=backup(emergency);if(!b.ok)return b}
-    if(backend){backend.kill();backend=null}
-    const r=backendExec(["--restore",source],{sync:true});if(!r||r.status!==0)return{ok:false,error:r?.stderr||"Restore failed"};
-    startBackend();return{ok:true,emergency};
-  }
-  return{ok:false,error:"Restore in development: replace backend/db.sqlite3 manually after stopping Django."};
+  if(fs.existsSync(currentDb)){const b=backup(emergency);if(!b.ok)return{ok:false,stage:"emergency-backup",error:b.error||"Emergency backup failed",emergency_backup:b}}
+  if(backend){backend.kill();backend=null}
+  const r=localRuntimeExec(["--restore",source],{sync:true});
+  const parsed=parseCliResult(r,"Restore failed");
+  startBackend();
+  if(!parsed.ok)return{...parsed,emergency};
+  return{...parsed,ok:true,emergency};
+}
+function systemPreflight(){
+  const checks=[];const push=(key,status,message,details={})=>checks.push({key,status,message,details});
+  const currentDb=app.isPackaged?dbPath():devDbPath();
+  try{
+    const probe=path.join(dataDir(),`.write-probe-${process.pid}-${Date.now()}`);fs.writeFileSync(probe,"ok");fs.unlinkSync(probe);push("data_dir","ok","مسیر داده Cafino قابل نوشتن است.",{path:dataDir()});
+  }catch(e){push("data_dir","error","مسیر داده Cafino قابل نوشتن نیست.",{error:String(e)})}
+  const runtime=app.isPackaged?packagedBackend():devPython();push("backend_runtime",fs.existsSync(runtime)?"ok":"error",fs.existsSync(runtime)?"Runtime بک‌اند موجود است.":"Runtime بک‌اند پیدا نشد.",{path:runtime});
+  if(app.isPackaged){const server=path.join(process.resourcesPath,"frontend","server.js");push("frontend_runtime",fs.existsSync(server)?"ok":"error",fs.existsSync(server)?"Runtime فرانت‌اند موجود است.":"Frontend server.js در package پیدا نشد.",{path:server})}else push("frontend_runtime","ok","Frontend در حالت توسعه توسط Next dev server اجرا می‌شود.");
+  push("database",fs.existsSync(currentDb)?"ok":"warning",fs.existsSync(currentDb)?"دیتابیس Local موجود است.":"دیتابیس هنوز ایجاد نشده است؛ اولین اجرای Backend آن را می‌سازد.",{path:currentDb});
+  try{if(typeof fs.statfsSync==="function"){const stat=fs.statfsSync(dataDir());const free=Number(stat.bavail||stat.bfree||0)*Number(stat.bsize||0);push("disk_space",free>=512*1024*1024?"ok":"warning",`فضای آزاد تقریبی: ${Math.round(free/1024/1024)} MB`,{free_bytes:free})}}catch(e){push("disk_space","warning","اندازه‌گیری فضای آزاد ممکن نشد.",{error:String(e)})}
+  return{ok:!checks.some(x=>x.status==="error"),packaged:app.isPackaged,platform:process.platform,version:app.getVersion(),checks,adapters:registryPayload().groups};
 }
 
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -85,9 +124,9 @@ function receiptHtml(p){
   ${p.table?`<div>میز: ${esc(p.table)}</div>`:""}${customer}<table><thead><tr><th>شرح</th><th>تعداد</th><th>مبلغ</th></tr></thead><tbody>${items}</tbody></table>
   <div class="row"><span>جمع</span><span>${Number(p.subtotal||0).toLocaleString()}</span></div>
   ${Number(p.discount_total||0)>0?`<div class="row"><span>تخفیف</span><span>-${Number(p.discount_total).toLocaleString()}</span></div>`:""}
-  ${template.show_service_charge!==false&&Number(p.service_charge_total||0)>0?`<div class="row"><span>${esc(p.service_label||"حق سرویس")}</span><span>${Number(p.service_charge_total).toLocaleString()}</span></div>`:""}
-  ${Number(p.delivery_fee_total||0)>0?`<div class="row"><span>هزینه ارسال</span><span>${Number(p.delivery_fee_total).toLocaleString()}</span></div>`:""}
-  ${template.show_tax!==false&&Number(p.tax_total||0)>0?`<div class="row"><span>${esc(p.tax_label||"مالیات")}</span><span>${Number(p.tax_total).toLocaleString()}</span></div>`:""}
+  ${template.show_service_charge!==false&&Number(p.service_charge_total||0)>0?`<div class="row"><span>${esc(p.service_label||"حق سرویس")}</span><span>${Number(p.service_charge_total||0).toLocaleString()}</span></div>`:""}
+  ${Number(p.delivery_fee_total||0)>0?`<div class="row"><span>هزینه ارسال</span><span>${Number(p.delivery_fee_total||0).toLocaleString()}</span></div>`:""}
+  ${template.show_tax!==false&&Number(p.tax_total||0)>0?`<div class="row"><span>${esc(p.tax_label||"مالیات")}</span><span>${Number(p.tax_total||0).toLocaleString()}</span></div>`:""}
   <div class="row total"><span>قابل پرداخت</span><span>${Number(p.grand_total||0).toLocaleString()}</span></div>
   <div>${pays}</div>${templateFooter}<p class="center muted">کافینو</p></body></html>`;
 }
@@ -126,7 +165,7 @@ function savedReceiptHtml(p){
     customer,
     items:'<table><thead><tr><th>شرح</th><th>تعداد</th><th>مبلغ</th></tr></thead><tbody>'+items+"</tbody></table>",
     summary,
-    payment:payments?'<div class="row"><div>'+payments+"</div></div>":"",
+    payment:payments?'<div class="row"><div>'+payments+"</div></div>':"",
     barcode:'<div class="barcode">'+esc(p.order_number)+"</div>",
     footer,
   };
@@ -161,19 +200,20 @@ async function printHtml(html,deviceName){
   }catch(e){if(!win.isDestroyed())win.destroy();return{ok:false,error:String(e)}}
 }
 
-
-
 app.whenReady().then(()=>{startBackend();startFrontend();startNotificationWorker();createWindow();app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()})});
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
 app.on("before-quit",()=>{if(notificationTimer)clearInterval(notificationTimer);if(backend)backend.kill();if(frontend)frontend.kill()});
 
-ipcMain.handle("system:health",async()=>({ok:true,packaged:app.isPackaged,platform:process.platform,version:app.getVersion(),dbPath:app.isPackaged?dbPath():path.join(devBackendDir(),"db.sqlite3")}));
-ipcMain.handle("backup:create",async()=>{const r=await dialog.showSaveDialog({title:"ذخیره بکاپ Cafino",defaultPath:`cafino-backup-${new Date().toISOString().slice(0,10)}.sqlite3`});if(r.canceled||!r.filePath)return{ok:false,canceled:true};return{...backup(r.filePath),path:r.filePath}});
-ipcMain.handle("backup:restore",async()=>{const r=await dialog.showOpenDialog({title:"انتخاب بکاپ Cafino",properties:["openFile"]});if(r.canceled||!r.filePaths[0])return{ok:false,canceled:true};return restore(r.filePaths[0])});
+ipcMain.handle("system:health",async()=>({ok:true,packaged:app.isPackaged,platform:process.platform,version:app.getVersion(),dbPath:app.isPackaged?dbPath():devDbPath()}));
+ipcMain.handle("system:preflight",async()=>systemPreflight());
+ipcMain.handle("device:adapters",async()=>registryPayload());
+ipcMain.handle("backup:create",async()=>{const r=await dialog.showSaveDialog({title:"ذخیره بکاپ تأییدشده Cafino",defaultPath:`cafino-backup-${new Date().toISOString().slice(0,10)}.sqlite3`});if(r.canceled||!r.filePath)return{ok:false,canceled:true};return{...backup(r.filePath),path:r.filePath}});
+ipcMain.handle("backup:verify",async()=>{const r=await dialog.showOpenDialog({title:"اعتبارسنجی بکاپ Cafino",properties:["openFile"],filters:[{name:"Cafino SQLite Backup",extensions:["sqlite3","db"]}]});if(r.canceled||!r.filePaths[0])return{ok:false,canceled:true};return verifyBackup(r.filePaths[0])});
+ipcMain.handle("backup:restore",async()=>{const r=await dialog.showOpenDialog({title:"انتخاب بکاپ Cafino",properties:["openFile"],filters:[{name:"Cafino SQLite Backup",extensions:["sqlite3","db"]}]});if(r.canceled||!r.filePaths[0])return{ok:false,canceled:true};return restore(r.filePaths[0])});
 ipcMain.handle("system:openExternal",async(_,url)=>{if(/^https?:\/\//.test(url))await shell.openExternal(url);return true});
 ipcMain.handle("printer:list",async()=>{const w=BrowserWindow.getAllWindows()[0];return w?await w.webContents.getPrintersAsync():[]});
 ipcMain.handle("printer:printHtml",async(_,args)=>printHtml(args?.html||"",args?.deviceName));
 ipcMain.handle("printer:printReceipt",async(_,args)=>printHtml(savedReceiptHtml(args?.payload||{}),args?.deviceName));
 ipcMain.handle("printer:printKitchen",async(_,args)=>printHtml(savedKitchenHtml(args?.payload||{}),args?.deviceName));
-ipcMain.handle("pager:call",async(_,pager)=>({ok:false,message:"Pager adapter requires selected hardware protocol.",pager}));
-ipcMain.handle("pos:sendAmount",async(_,amount)=>({ok:false,message:"Bank POS requires selected vendor SDK/API.",amount}));
+ipcMain.handle("pager:call",async(_,pager)=>callPager(pager));
+ipcMain.handle("pos:sendAmount",async(_,amount)=>sendPosAmount(amount));
