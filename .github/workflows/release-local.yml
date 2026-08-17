@@ -4,9 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "SemVer release version, e.g. 1.2.0"
+        description: "SemVer release version, e.g. 1.2.0 or 1.2.0-beta.1"
         required: true
         type: string
+      channel:
+        description: "Update channel"
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
+      publish:
+        description: "Publish the verified bundle to the configured S3-compatible update feed"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -15,6 +28,7 @@ jobs:
   build-signed-installer:
     runs-on: windows-latest
     env:
+      CAF_INO_UPDATE_BASE_URL: ${{ secrets.CAF_INO_UPDATE_BASE_URL }}
       CAF_INO_UPDATE_URL: ${{ secrets.CAF_INO_UPDATE_URL }}
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -27,10 +41,14 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Validate version
+      - name: Validate version and channel
         shell: pwsh
         run: |
-          if ("${{ inputs.version }}" -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid SemVer version" }
+          $version="${{ inputs.version }}"
+          $channel="${{ inputs.channel }}"
+          if ($channel -eq "stable" -and $version -notmatch '^\d+\.\d+\.\d+$') { throw "Stable release requires plain SemVer, e.g. 1.2.0" }
+          if ($channel -eq "beta" -and $version -notmatch '^\d+\.\d+\.\d+-beta(?:\.[0-9A-Za-z.-]+)?$') { throw "Beta release requires -beta, e.g. 1.2.0-beta.1" }
+          if ([string]::IsNullOrWhiteSpace($env:CAF_INO_UPDATE_BASE_URL) -and [string]::IsNullOrWhiteSpace($env:CAF_INO_UPDATE_URL)) { throw "CAF_INO_UPDATE_BASE_URL secret is required" }
 
       - name: Prepare Python release environment
         shell: pwsh
@@ -58,12 +76,24 @@ jobs:
 
       - name: Build signed production release
         shell: powershell
-        run: .\scripts\build-release.ps1 -Production
+        run: .\scripts\build-release.ps1 -Production -Channel "${{ inputs.channel }}"
+
+      - name: Verify Authenticode and update metadata
+        shell: pwsh
+        run: |
+          $installer=Get-ChildItem electron/release -Filter "Cafino-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Signed installer was not produced" }
+          $signature=Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne "Valid") { throw "Installer Authenticode signature is not valid: $($signature.Status)" }
+          $metadata=if("${{ inputs.channel }}" -eq "beta"){"beta.yml"}else{"latest.yml"}
+          if (!(Test-Path "electron/release/$metadata")) { throw "Update metadata missing: $metadata" }
+          if (!(Test-Path "electron/release/release-manifest.json")) { throw "release-manifest.json missing" }
+          Write-Host "Verified $($installer.Name), signature=$($signature.Status), metadata=$metadata"
 
       - name: Upload signed installer bundle
         uses: actions/upload-artifact@v4
         with:
-          name: cafino-local-${{ inputs.version }}-signed
+          name: cafino-local-${{ inputs.channel }}-${{ inputs.version }}-signed
           path: |
             electron/release/Cafino-Setup-*.exe
             electron/release/*.yml
@@ -71,3 +101,78 @@ jobs:
             electron/release/release-manifest.json
           if-no-files-found: error
           retention-days: 30
+
+  publish-update-feed:
+    if: ${{ inputs.publish }}
+    needs: build-signed-installer
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.CAF_INO_UPDATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.CAF_INO_UPDATE_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.CAF_INO_UPDATE_REGION }}
+      CAF_INO_UPDATE_BUCKET: ${{ secrets.CAF_INO_UPDATE_BUCKET }}
+      CAF_INO_UPDATE_ENDPOINT: ${{ secrets.CAF_INO_UPDATE_ENDPOINT }}
+      CAF_INO_UPDATE_BASE_URL: ${{ secrets.CAF_INO_UPDATE_BASE_URL }}
+      CAF_INO_UPDATE_PREFIX: ${{ vars.CAF_INO_UPDATE_PREFIX }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: cafino-local-${{ inputs.channel }}-${{ inputs.version }}-signed
+          path: bundle
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install S3 client
+        run: python -m pip install awscli
+
+      - name: Publish immutable artifacts then metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${AWS_ACCESS_KEY_ID:?CAF_INO_UPDATE_ACCESS_KEY_ID secret is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?CAF_INO_UPDATE_SECRET_ACCESS_KEY secret is required}"
+          : "${AWS_DEFAULT_REGION:?CAF_INO_UPDATE_REGION secret is required}"
+          : "${CAF_INO_UPDATE_BUCKET:?CAF_INO_UPDATE_BUCKET secret is required}"
+          : "${CAF_INO_UPDATE_BASE_URL:?CAF_INO_UPDATE_BASE_URL secret is required}"
+
+          channel="${{ inputs.channel }}"
+          metadata="latest.yml"
+          if [ "$channel" = "beta" ]; then metadata="beta.yml"; fi
+          test -f "bundle/$metadata"
+          test -f bundle/release-manifest.json
+
+          prefix="${CAF_INO_UPDATE_PREFIX:-cafino/local}"
+          prefix="${prefix#/}"; prefix="${prefix%/}"
+          destination="s3://${CAF_INO_UPDATE_BUCKET}/${prefix}/${channel}"
+          endpoint_args=()
+          if [ -n "${CAF_INO_UPDATE_ENDPOINT:-}" ]; then endpoint_args=(--endpoint-url "$CAF_INO_UPDATE_ENDPOINT"); fi
+
+          shopt -s nullglob
+          binaries=(bundle/Cafino-Setup-*.exe bundle/*.blockmap)
+          if [ ${#binaries[@]} -eq 0 ]; then echo "No installer artifacts found" >&2; exit 1; fi
+          for file in "${binaries[@]}"; do
+            aws "${endpoint_args[@]}" s3 cp "$file" "$destination/$(basename "$file")" --cache-control "public,max-age=31536000,immutable"
+          done
+          aws "${endpoint_args[@]}" s3 cp bundle/release-manifest.json "$destination/release-manifest.json" --cache-control "no-cache"
+          aws "${endpoint_args[@]}" s3 cp "bundle/$metadata" "$destination/$metadata" --cache-control "no-cache,no-store,must-revalidate" --content-type "application/yaml"
+
+      - name: Verify public update feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="${{ inputs.channel }}"
+          metadata="latest.yml"
+          if [ "$channel" = "beta" ]; then metadata="beta.yml"; fi
+          url="${CAF_INO_UPDATE_BASE_URL%/}/${channel}/${metadata}"
+          for attempt in 1 2 3 4 5 6; do
+            if curl --fail --silent --show-error --location "$url" -o remote-update.yml; then
+              grep -q '^version:' remote-update.yml
+              echo "Public update feed verified: $url"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Published metadata was not reachable from the public update URL: $url" >&2
+          exit 1
