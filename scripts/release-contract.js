@@ -39,5 +39,7 @@ const entry=fs.readFileSync(path.join(electron,"src","entry.js"),"utf8");
 assert.ok(entry.includes("--cafino-smoke-check"),"Packaged smoke-check entrypoint is required");
 assert.ok(entry.includes("operationsEnabled"),"Packaged smoke check must validate Operations config");
 const runtime=fs.readFileSync(path.join(electron,"src","release-runtime.js"),"utf8");
-for(const token of ["core_operations_allowed","operations:sync","fingerprintError","diagnostic_request_id"])assert.ok(runtime.includes(token),`Production operations runtime contract missing ${token}`);
+for(const token of ["operations:sync","fingerprintError","diagnostic_request_id","current_blocked"])assert.ok(runtime.includes(token),`Production operations runtime contract missing ${token}`);
+const opsServices=fs.readFileSync(path.join(root,"backend","apps","operations","services.py"),"utf8");
+for(const token of ["core_operations_allowed","remote_commands_allowed","rollout_bucket","sanitize_diagnostic_snapshot"])assert.ok(opsServices.includes(token),`Operations control-plane safety contract missing ${token}`);
 console.log("Cafino desktop release contract passed");
