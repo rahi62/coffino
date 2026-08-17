@@ -1,9 +1,11 @@
 const production=process.env.CAF_INO_PRODUCTION_BUILD==="1";
 const allowUnsigned=process.env.CAF_INO_ALLOW_UNSIGNED==="1";
 const updateUrl=String(process.env.CAF_INO_UPDATE_URL||"").trim();
+const updateChannel=String(process.env.CAF_INO_UPDATE_CHANNEL||"latest").trim().toLowerCase();
 
 if(production&&!updateUrl)throw new Error("CAF_INO_UPDATE_URL is required for production build");
 if(production&&!/^https:\/\//i.test(updateUrl))throw new Error("CAF_INO_UPDATE_URL must use HTTPS");
+if(!["latest","beta"].includes(updateChannel))throw new Error("CAF_INO_UPDATE_CHANNEL must be latest or beta");
 
 module.exports={
   appId:"com.digitalafarin.cafino",
@@ -17,7 +19,7 @@ module.exports={
     {from:"release-resources/config",to:"config",filter:["**/*"]},
   ],
   artifactName:"Cafino-Setup-${version}.${ext}",
-  publish:updateUrl?[{provider:"generic",url:updateUrl}]:undefined,
+  publish:updateUrl?[{provider:"generic",url:updateUrl,channel:updateChannel,publishAutoUpdate:true}]:undefined,
   win:{target:["nsis"]},
   nsis:{
     oneClick:false,
