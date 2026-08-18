@@ -31,6 +31,7 @@ _append_unique(
     ALLOWED_HOSTS,
     os.getenv('RAILWAY_PUBLIC_DOMAIN',''),
     os.getenv('RAILWAY_PRIVATE_DOMAIN',''),
+    'healthcheck.railway.app',
 )
 
 if not DEBUG and ENVIRONMENT in {'saas','dedicated'} and SECRET_KEY=='dev-secret-change-me':
@@ -86,6 +87,7 @@ for origin in frontend_origins:
 
 CORS_ALLOW_HEADERS=[*default_headers,'idempotency-key','x-cafino-override']
 SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
+SECURE_REDIRECT_EXEMPT=[r'^api/v1/health/$']
 SESSION_COOKIE_SECURE=not DEBUG
 CSRF_COOKIE_SECURE=not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF=True
