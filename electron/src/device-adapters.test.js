@@ -1,4 +1,7 @@
 const assert=require("assert");
+const fs=require("fs");
+const os=require("os");
+const path=require("path");
 const http=require("http");
 const {registryPayload,callPager,sendPosAmount,allowedBridgeHost,normalizeResponse,saleInput}=require("./device-adapters");
 
@@ -32,17 +35,38 @@ const {registryPayload,callPager,sendPosAmount,allowedBridgeHost,normalizeRespon
   const responseCode00=normalizeResponse({status:"00",rrn:"RRN-00"},"HTTP_BRIDGE",{amount:1000,terminalAmount:1000,currency:"IRR"});
   assert.equal(responseCode00.ok,true);assert.equal(responseCode00.referenceNumber,"RRN-00");
 
-  const server=http.createServer((req,res)=>{let body="";req.on("data",c=>body+=c);req.on("end",()=>{const payload=JSON.parse(body);assert.equal(payload.amount,125000);assert.equal(payload.reference,"checkout-1:pos:0");res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({status:"approved",rrn:"RRN-1",trace:"42",terminal_id:"T-1",pan:"6037991111112222"}))})});
+  let calls=0;
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"cafino-pos-test-"));
+  const journal=path.join(tmp,"journal.ndjson");
+  const server=http.createServer((req,res)=>{let body="";req.on("data",c=>body+=c);req.on("end",()=>{calls++;const payload=JSON.parse(body);assert.equal(payload.amount,125000);assert.equal(payload.reference,"checkout-1:pos:0");res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({status:"approved",rrn:"RRN-1",trace:"42",terminal_id:"T-1",pan:"6037991111112222"}))})});
   await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
   try{
     const address=server.address();
-    const result=await sendPosAmount({amount:125000,reference:"checkout-1:pos:0"},{CAF_INO_POS_ADAPTER:"HTTP_BRIDGE",CAF_INO_POS_BRIDGE_URL:`http://127.0.0.1:${address.port}/sale`});
-    assert.equal(result.ok,true);assert.equal(result.referenceNumber,"RRN-1");assert.equal(result.maskedPan,"****2222");
-  }finally{await new Promise(resolve=>server.close(resolve))}
+    const env={CAF_INO_POS_ADAPTER:"HTTP_BRIDGE",CAF_INO_POS_BRIDGE_URL:`http://127.0.0.1:${address.port}/sale`,CAF_INO_POS_JOURNAL_PATH:journal};
+    const input={amount:125000,reference:"checkout-1:pos:0"};
+    const first=await sendPosAmount(input,env);
+    assert.equal(first.ok,true);assert.equal(first.referenceNumber,"RRN-1");assert.equal(first.maskedPan,"****2222");assert.equal(first.replayed,false);assert.equal(calls,1);
 
-  const publicBridge=await sendPosAmount({amount:1000,reference:"x"},{CAF_INO_POS_ADAPTER:"HTTP_BRIDGE",CAF_INO_POS_BRIDGE_URL:"https://8.8.8.8/sale",CAF_INO_POS_TIMEOUT_MS:"1000"});
+    const replay=await sendPosAmount(input,env);
+    assert.equal(replay.ok,true);assert.equal(replay.replayed,true);assert.equal(replay.referenceNumber,"RRN-1");assert.equal(calls,1,"Same POS reference must never hit the bridge twice after approval");
+
+    const conflict=await sendPosAmount({amount:126000,reference:"checkout-1:pos:0"},env);
+    assert.equal(conflict.ok,false);assert.equal(conflict.error,"reference_conflict");assert.equal(calls,1);
+
+    const missing=await sendPosAmount({amount:125000},env);
+    assert.equal(missing.ok,false);assert.equal(missing.error,"missing_reference");assert.equal(calls,1);
+
+    const journalText=fs.readFileSync(journal,"utf8");
+    assert.match(journalText,/RRN-1/);
+    assert.ok(!journalText.includes("6037991111112222"),"Full PAN must never enter the local approval journal");
+    assert.match(journalText,/\*\*\*\*2222/);
+  }finally{await new Promise(resolve=>server.close(resolve));fs.rmSync(tmp,{recursive:true,force:true})}
+
+  const publicJournal=path.join(os.tmpdir(),`cafino-public-journal-${process.pid}.ndjson`);
+  const publicBridge=await sendPosAmount({amount:1000,reference:"x"},{CAF_INO_POS_ADAPTER:"HTTP_BRIDGE",CAF_INO_POS_BRIDGE_URL:"https://8.8.8.8/sale",CAF_INO_POS_TIMEOUT_MS:"1000",CAF_INO_POS_JOURNAL_PATH:publicJournal});
   assert.equal(publicBridge.ok,false);
   assert.match(publicBridge.message,/local\/private/i);
+  try{fs.unlinkSync(publicJournal)}catch{}
 
   const pager=callPager({number:"12"},{});
   assert.equal(pager.ok,false);assert.equal(pager.status,"unconfigured");assert.equal(pager.adapter,"NONE");
