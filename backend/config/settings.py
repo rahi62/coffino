@@ -26,15 +26,18 @@ def _append_unique(rows,*values):
 SECRET_KEY=os.getenv('DJANGO_SECRET_KEY','dev-secret-change-me')
 DEBUG=os.getenv('DJANGO_DEBUG','1')=='1'
 ENVIRONMENT=os.getenv('CAF_INO_ENV','local').strip().lower()
+PUBLIC_DEPLOYMENT=ENVIRONMENT in {'saas','dedicated'}
+ON_RAILWAY=bool(os.getenv('RAILWAY_PRIVATE_DOMAIN') or os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('RAILWAY_ENVIRONMENT_ID'))
 ALLOWED_HOSTS=_csv('DJANGO_ALLOWED_HOSTS','127.0.0.1,localhost')
 _append_unique(
     ALLOWED_HOSTS,
     os.getenv('RAILWAY_PUBLIC_DOMAIN',''),
     os.getenv('RAILWAY_PRIVATE_DOMAIN',''),
-    'healthcheck.railway.app',
 )
+if ON_RAILWAY:
+    _append_unique(ALLOWED_HOSTS,'healthcheck.railway.app')
 
-if not DEBUG and ENVIRONMENT in {'saas','dedicated'} and SECRET_KEY=='dev-secret-change-me':
+if not DEBUG and PUBLIC_DEPLOYMENT and SECRET_KEY=='dev-secret-change-me':
     raise ImproperlyConfigured('DJANGO_SECRET_KEY must be configured for public Cafino deployments.')
 
 CAF_INO_LICENSE_PUBLIC_KEY_PEM=os.getenv('CAF_INO_LICENSE_PUBLIC_KEY_PEM','')
@@ -76,7 +79,8 @@ STATIC_URL='/static/';STATIC_ROOT=BASE_DIR/'staticfiles'
 STORAGES={'staticfiles':{'BACKEND':'whitenoise.storage.CompressedManifestStaticFilesStorage'}}
 DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS=_csv('CORS_ALLOWED_ORIGINS','http://127.0.0.1:3000,http://localhost:3000')
+local_cors_default='http://127.0.0.1:3000,http://localhost:3000' if not PUBLIC_DEPLOYMENT else ''
+CORS_ALLOWED_ORIGINS=_csv('CORS_ALLOWED_ORIGINS',local_cors_default)
 CSRF_TRUSTED_ORIGINS=_csv('CSRF_TRUSTED_ORIGINS','')
 frontend_origins=_csv('CAF_INO_FRONTEND_ORIGIN','')
 for origin in frontend_origins:
@@ -88,10 +92,14 @@ for origin in frontend_origins:
 CORS_ALLOW_HEADERS=[*default_headers,'idempotency-key','x-cafino-override']
 SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
 SECURE_REDIRECT_EXEMPT=[r'^api/v1/health/$']
-SESSION_COOKIE_SECURE=not DEBUG
-CSRF_COOKIE_SECURE=not DEBUG
+SESSION_COOKIE_SECURE=bool(PUBLIC_DEPLOYMENT and not DEBUG)
+CSRF_COOKIE_SECURE=bool(PUBLIC_DEPLOYMENT and not DEBUG)
 SECURE_CONTENT_TYPE_NOSNIFF=True
 X_FRAME_OPTIONS='DENY'
+SECURE_SSL_REDIRECT=os.getenv('DJANGO_SECURE_SSL_REDIRECT','1' if PUBLIC_DEPLOYMENT and not DEBUG else '0')=='1'
+SECURE_HSTS_SECONDS=int(os.getenv('DJANGO_HSTS_SECONDS','3600' if PUBLIC_DEPLOYMENT and not DEBUG else '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS=bool(PUBLIC_DEPLOYMENT and not DEBUG)
+SECURE_HSTS_PRELOAD=False
 
 REST_FRAMEWORK={
  'DEFAULT_PERMISSION_CLASSES':['rest_framework.permissions.IsAuthenticated'],
@@ -123,9 +131,3 @@ CELERY_BEAT_SCHEDULE={
  },
 }
 SPECTACULAR_SETTINGS={'TITLE':'Cafino API','VERSION':'1.0.0'}
-
-if not DEBUG:
-    SECURE_SSL_REDIRECT=os.getenv('DJANGO_SECURE_SSL_REDIRECT','1')=='1'
-    SECURE_HSTS_SECONDS=int(os.getenv('DJANGO_HSTS_SECONDS','3600'))
-    SECURE_HSTS_INCLUDE_SUBDOMAINS=True
-    SECURE_HSTS_PRELOAD=False
