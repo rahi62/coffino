@@ -1,5 +1,7 @@
 const fs=require("fs");
 const net=require("net");
+const os=require("os");
+const path=require("path");
 const {execFile}=require("child_process");
 
 const ADAPTERS={
@@ -18,6 +20,9 @@ const ADAPTERS={
     {key:"VENDOR_SDK",label:"Direct vendor SDK",status:"planned",mode:"sdk",description:"Implement only after receiving the exact PSP/vendor SDK"},
   ],
 };
+
+const posApprovalMemory=new Map();
+const posApprovalInflight=new Map();
 
 function selected(env,key,fallback){
   const raw=String(env[`CAF_INO_${key}_ADAPTER`]||env[`CAFINO_${key}_ADAPTER`]||fallback).trim().toUpperCase();
@@ -85,6 +90,62 @@ function normalizeResponse(raw,adapter,sale){
     terminalId:safeText(raw?.terminal_id||raw?.terminalId||raw?.tid||"",80),maskedPan:maskedPan(raw?.masked_pan||raw?.maskedPan||raw?.pan||""),
     message:safeText(raw?.message||raw?.description||(approved?"POS transaction approved.":"POS transaction was not approved."),180)};
 }
+function posJournalPath(env=process.env){
+  const configured=String(env.CAF_INO_POS_JOURNAL_PATH||"").trim();
+  if(configured)return path.resolve(configured);
+  const base=String(env.APPDATA||"").trim()?path.join(env.APPDATA,"Cafino"):path.join(os.homedir(),".cafino");
+  return path.join(base,"pos-approvals.ndjson");
+}
+function posJournalKey(journalPath,reference){return`${journalPath}\u0000${reference}`}
+function ensurePosJournalReadable(env=process.env){
+  const journalPath=posJournalPath(env),dir=path.dirname(journalPath);
+  fs.mkdirSync(dir,{recursive:true});
+  const handle=fs.openSync(journalPath,"a");fs.closeSync(handle);
+  const text=fs.readFileSync(journalPath,"utf8");
+  const ended=text.length===0||text.endsWith("\n");
+  const rows=new Map(),lines=text.split(/\r?\n/);
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];if(!line.trim())continue;
+    try{
+      const row=JSON.parse(line);
+      if(!row||row.version!==1||typeof row.reference!=="string"||!Number.isSafeInteger(row.amount)||!row.result?.approved)throw new Error("invalid_row");
+      rows.set(row.reference,row);
+    }catch(error){
+      const isTrailingPartial=!ended&&i===lines.length-1;
+      if(isTrailingPartial)break;
+      throw new Error(`POS approval journal is unreadable at line ${i+1}; stop automatic POS payments and reconcile the journal before retrying.`);
+    }
+  }
+  return{journalPath,rows};
+}
+function approvalSnapshot(result){
+  return{
+    ok:true,approved:true,status:safeText(result.status||"approved",32),adapter:safeText(result.adapter||"",32),
+    amount:Number(result.amount),terminalAmount:Number(result.terminalAmount),currency:safeText(result.currency||"",8),
+    referenceNumber:safeText(result.referenceNumber||"",120),traceNumber:safeText(result.traceNumber||"",80),
+    terminalId:safeText(result.terminalId||"",80),maskedPan:maskedPan(result.maskedPan||""),
+    message:safeText(result.message||"POS transaction approved.",180),
+  };
+}
+function appendPosApproval(sale,result,env=process.env){
+  const journalPath=posJournalPath(env);fs.mkdirSync(path.dirname(journalPath),{recursive:true});
+  const row={version:1,reference:sale.reference,amount:sale.amount,approvedAt:new Date().toISOString(),result:approvalSnapshot(result)};
+  fs.appendFileSync(journalPath,JSON.stringify(row)+"\n",{encoding:"utf8",mode:0o600});
+  return row;
+}
+function cachedPosApproval(sale,env=process.env){
+  const journalPath=posJournalPath(env),memoryKey=posJournalKey(journalPath,sale.reference);
+  const memory=posApprovalMemory.get(memoryKey);
+  if(memory){
+    if(memory.amount!==sale.amount)return{conflict:true,message:"This POS reference was already approved for a different amount. Do not retry automatically."};
+    return{result:{...memory.result,replayed:true,journal:"memory"}};
+  }
+  const {rows}=ensurePosJournalReadable(env),row=rows.get(sale.reference);
+  if(!row)return{};
+  if(row.amount!==sale.amount)return{conflict:true,message:"This POS reference already exists in the approval journal with a different amount. Do not retry automatically."};
+  posApprovalMemory.set(memoryKey,row);
+  return{result:{...row.result,replayed:true,journal:"disk"}};
+}
 async function httpSale(sale,env){
   const url=httpBridgeUrl(env);if(!url)throw new Error("POS HTTP bridge URL is missing or not local/private.");
   const timeout=Math.max(1000,Math.min(180000,Number(env.CAF_INO_POS_TIMEOUT_MS||90000)));const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);
@@ -108,15 +169,42 @@ function execSale(sale,env){return new Promise((resolve,reject)=>{
   const args=["--amount",String(sale.terminalAmount),"--currency",sale.currency,"--reference",sale.reference];
   execFile(executable,args,{windowsHide:true,timeout,maxBuffer:64*1024},(error,stdout)=>{if(error)return reject(new Error(`POS helper failed: ${safeText(error.message,160)}`));try{resolve(JSON.parse(String(stdout||"").trim()))}catch{reject(new Error("POS helper returned invalid JSON."))}});
 })}
+async function directSale(sale,adapter,env){
+  const raw=adapter==="HTTP_BRIDGE"?await httpSale(sale,env):adapter==="TCP_JSON"?await tcpSale(sale,env):adapter==="EXEC_BRIDGE"?await execSale(sale,env):null;
+  if(!raw)return{ok:false,approved:false,adapter,status:"unconfigured",message:"POS adapter is not configured."};
+  return normalizeResponse(raw,adapter,sale);
+}
+async function authorizeDirectPos(sale,adapter,env=process.env){
+  if(!sale.reference)return{ok:false,approved:false,adapter,error:"missing_reference",message:"Automatic POS payments require a stable idempotency reference."};
+  let cached;
+  try{cached=cachedPosApproval(sale,env)}catch(error){return{ok:false,approved:false,adapter,error:"journal_unreadable",message:safeText(error?.message||error,220)}}
+  if(cached.conflict)return{ok:false,approved:false,adapter,error:"reference_conflict",message:cached.message};
+  if(cached.result)return cached.result;
+
+  const journalPath=posJournalPath(env),inflightKey=posJournalKey(journalPath,sale.reference);
+  if(posApprovalInflight.has(inflightKey))return posApprovalInflight.get(inflightKey);
+  const task=(async()=>{
+    const result=await directSale(sale,adapter,env);
+    if(!result?.ok||!result?.approved)return result;
+    const snapshot=approvalSnapshot(result),row={version:1,reference:sale.reference,amount:sale.amount,approvedAt:new Date().toISOString(),result:snapshot};
+    posApprovalMemory.set(inflightKey,row);
+    try{
+      appendPosApproval(sale,snapshot,env);
+      return{...snapshot,replayed:false,journal:"disk"};
+    }catch(error){
+      return{...snapshot,ok:false,approved:true,status:"approved_journal_error",error:"journal_write_failed",replayed:false,journal:"memory",
+        message:`Terminal approved the payment but Cafino could not persist the approval journal. Do NOT restart or create a new payment; reconcile RRN ${snapshot.referenceNumber||snapshot.traceNumber||"(missing)"} and retry only after fixing local storage.`};
+    }
+  })().finally(()=>posApprovalInflight.delete(inflightKey));
+  posApprovalInflight.set(inflightKey,task);
+  return task;
+}
 async function sendPosAmount(input,env=process.env){
   const adapter=selected(env,"POS","MANUAL"),sale=saleInput(input,env);
   if(!sale)return{ok:false,approved:false,adapter,error:"invalid_amount",message:"POS amount must be a positive integer in the configured unit."};
   if(adapter==="MANUAL")return{ok:false,approved:false,requiresManual:true,adapter,amount:sale.amount,message:"Enter the amount on the POS terminal manually and confirm it in Cafino."};
   if(adapter==="VENDOR_SDK")return{ok:false,approved:false,adapter,status:"planned",amount:sale.amount,message:"Direct vendor SDK adapter needs the exact terminal/PSP SDK."};
-  try{
-    const raw=adapter==="HTTP_BRIDGE"?await httpSale(sale,env):adapter==="TCP_JSON"?await tcpSale(sale,env):adapter==="EXEC_BRIDGE"?await execSale(sale,env):null;
-    if(!raw)return{ok:false,approved:false,adapter,status:"unconfigured",message:"POS adapter is not configured."};
-    return normalizeResponse(raw,adapter,sale);
-  }catch(error){return{ok:false,approved:false,adapter,status:"error",amount:sale.amount,message:safeText(error?.message||error,180)}}
+  try{return await authorizeDirectPos(sale,adapter,env)}
+  catch(error){return{ok:false,approved:false,adapter,status:"error",amount:sale.amount,message:safeText(error?.message||error,180)}}
 }
-module.exports={ADAPTERS,registryPayload,callPager,sendPosAmount,allowedBridgeHost,httpBridgeUrl,tcpBridgeConfig,saleInput,normalizeResponse};
+module.exports={ADAPTERS,registryPayload,callPager,sendPosAmount,allowedBridgeHost,httpBridgeUrl,tcpBridgeConfig,saleInput,normalizeResponse,posJournalPath,ensurePosJournalReadable,appendPosApproval,cachedPosApproval};
