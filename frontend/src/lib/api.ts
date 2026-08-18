@@ -9,6 +9,24 @@ export async function login(username:string,password:string){
  let r:Response;try{r=await fetch((process.env.NEXT_PUBLIC_API_ROOT||"http://127.0.0.1:8000")+"/api/token/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});}catch{throw new Error(t("error.network"));}if(!r.ok)throw new Error("نام کاربری یا رمز عبور نادرست است.");const d=await r.json();setToken(d.access);return d;
 }
 
+export type LocalBootstrapStatus={available:boolean;needs_setup:boolean};
+export type LocalBootstrapInput={business_name:string;branch_name:string;username:string;email?:string;password:string;password_confirmation:string;business_type?:string};
+
+export async function localBootstrapStatus():Promise<LocalBootstrapStatus|null>{
+ let r:Response;
+ try{r=await fetch(`${base}/local/bootstrap/`,{cache:"no-store"})}catch{throw new Error(t("error.network"))}
+ if(r.status===404)return null;
+ if(!r.ok)throw new Error(userMessage(await r.text(),r.status));
+ return await r.json() as LocalBootstrapStatus;
+}
+
+export async function localBootstrap(input:LocalBootstrapInput){
+ let r:Response;
+ try{r=await fetch(`${base}/local/bootstrap/`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input),cache:"no-store"})}catch{throw new Error(t("error.network"))}
+ if(!r.ok)throw new Error(userMessage(await r.text(),r.status));
+ return await r.json();
+}
+
 function headerValue(headers:HeadersInit|undefined,name:string){
  if(!headers)return "";if(headers instanceof Headers)return headers.get(name)||"";
  if(Array.isArray(headers)){const row=headers.find(([k])=>k.toLowerCase()===name.toLowerCase());return row?.[1]||""}
