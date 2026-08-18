@@ -1,7 +1,8 @@
 param(
   [string]$Installer="",
   [switch]$Build,
-  [switch]$RequireTrustedSignature
+  [switch]$RequireTrustedSignature,
+  [switch]$AllowExistingInstall
 )
 
 $ErrorActionPreference="Stop"
@@ -39,10 +40,18 @@ try{
   if($LASTEXITCODE -ne 0){throw "POS/device adapter contract failed."}
 }finally{Pop-Location}
 
-Write-Host "Installing, verifying packaged runtime, and uninstalling Cafino..." -ForegroundColor Cyan
-& "$root\scripts\smoke-test-installer.ps1" -Installer $installerPath -RequireTrustedSignature:$RequireTrustedSignature
+Write-Host "Installing Cafino, booting the real packaged Local runtime, checking Backend/Frontend HTTP 200, and uninstalling..." -ForegroundColor Cyan
+& "$root\scripts\smoke-test-installer.ps1" `
+  -Installer $installerPath `
+  -RuntimeSmoke `
+  -RequireTrustedSignature:$RequireTrustedSignature `
+  -AllowExistingInstall:$AllowExistingInstall
 
-Write-Host "" 
+Assert-Port-Free 8000
+Assert-Port-Free 3000
+
+Write-Host ""
 Write-Host "Cafino Local installer acceptance PASSED." -ForegroundColor Green
 Write-Host "Installer: $installerPath"
-Write-Host "Next real-device checks: printer mapping, one POS sale/decline, backup->restore drill, offline restart, and update/rollback." -ForegroundColor Yellow
+Write-Host "Verified: clean install + packaged resources + real Backend health + real Frontend login + process-tree shutdown + uninstall." -ForegroundColor Green
+Write-Host "Remaining real-device checks: printer mapping, physical POS approve/decline/status-query/reversal, backup->restore drill, offline restart, and update/rollback." -ForegroundColor Yellow
