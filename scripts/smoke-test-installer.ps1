@@ -40,8 +40,33 @@ function Wait-Http200([string]$Url,[int]$Attempts=120,[int]$DelayMs=1000){
   throw "Timed out waiting for exact HTTP 200 from $Url. Last result: $last"
 }
 
+function Invoke-JsonRequest([string]$Method,[string]$Url,$Body=$null,$Headers=$null){
+  $params=@{
+    Method=$Method
+    Uri=$Url
+    TimeoutSec=10
+    ErrorAction="Stop"
+  }
+  if($null -ne $Headers){$params.Headers=$Headers}
+  if($null -ne $Body){
+    $params.ContentType="application/json"
+    $params.Body=($Body | ConvertTo-Json -Depth 8 -Compress)
+  }
+  return Invoke-RestMethod @params
+}
+
 function Stop-ProcessTree([int]$Pid){
   try{& taskkill.exe /PID $Pid /T /F 2>$null | Out-Null}catch{}
+}
+
+function Assert-LocalOwnerLogin([string]$Username,[string]$Password){
+  $token=Invoke-JsonRequest "POST" "http://127.0.0.1:8000/api/token/" @{username=$Username;password=$Password}
+  if(-not $token.access){throw "Local smoke login did not return a JWT access token."}
+  $me=Invoke-JsonRequest "GET" "http://127.0.0.1:8000/api/v1/me/" $null @{Authorization="Bearer $($token.access)"}
+  if($me.username -ne $Username -or $me.role -ne "OWNER"){
+    throw "Authenticated Local owner contract failed after first-run setup."
+  }
+  return $me
 }
 
 $before=Find-CafinoExecutables
@@ -91,6 +116,8 @@ try{
   if($RuntimeSmoke){
     Write-Host "Starting installed Cafino for real Local runtime smoke..." -ForegroundColor Cyan
     $runtime=$null
+    $username="smoke-owner-$PID"
+    $password="Pilot-Strong-2026-$PID!"
     try{
       $runtime=Start-Process -FilePath $exe.FullName -PassThru
       $health=Wait-Http200 "http://127.0.0.1:8000/api/v1/health/"
@@ -106,11 +133,45 @@ try{
         if(-not $bootstrapJson.available -or -not $bootstrapJson.needs_setup){
           throw "Fresh installed database did not expose the expected one-shot Local first-run setup state."
         }
+
+        $created=Invoke-JsonRequest "POST" "http://127.0.0.1:8000/api/v1/local/bootstrap/" @{
+          business_name="Cafino Smoke Pilot $PID"
+          branch_name="Main"
+          business_type="CAFE"
+          username=$username
+          email="smoke-$PID@example.test"
+          password=$password
+          password_confirmation=$password
+        }
+        if(-not $created.ok -or $created.owner.username -ne $username){
+          throw "Local first-run POST did not create the expected OWNER."
+        }
+
+        [void](Assert-LocalOwnerLogin $username $password)
+        $closed=Invoke-JsonRequest "GET" "http://127.0.0.1:8000/api/v1/local/bootstrap/"
+        if($closed.needs_setup){throw "Local first-run endpoint remained open after OWNER creation."}
       }
-      Write-Host "Installed Backend, Frontend and fresh Local first-run state passed runtime smoke." -ForegroundColor Green
+      Write-Host "Installed Backend, Frontend, first-run creation and OWNER login passed." -ForegroundColor Green
     }finally{
       if($runtime){Stop-ProcessTree $runtime.Id}
-      Start-Sleep -Seconds 2
+      Start-Sleep -Seconds 3
+    }
+
+    if(-not $userDataExisted){
+      Write-Host "Restarting installed Cafino to verify SQLite persistence and login..." -ForegroundColor Cyan
+      $restart=$null
+      try{
+        $restart=Start-Process -FilePath $exe.FullName -PassThru
+        Wait-Http200 "http://127.0.0.1:8000/api/v1/health/" | Out-Null
+        Wait-Http200 "http://127.0.0.1:3000/login" | Out-Null
+        $state=Invoke-JsonRequest "GET" "http://127.0.0.1:8000/api/v1/local/bootstrap/"
+        if($state.needs_setup){throw "Local first-run unexpectedly reopened after application restart."}
+        [void](Assert-LocalOwnerLogin $username $password)
+        Write-Host "Local SQLite data and OWNER login survived a full application restart." -ForegroundColor Green
+      }finally{
+        if($restart){Stop-ProcessTree $restart.Id}
+        Start-Sleep -Seconds 3
+      }
     }
   }
 
