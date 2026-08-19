@@ -119,7 +119,37 @@ Remove `CAF_INO_BOOTSTRAP_OWNER_PASSWORD` immediately after success.
 
 Do not run `seed_demo` on the production database.
 
-## 7. Acceptance endpoints
+## 7. Automated public-boundary smoke
+
+After both public domains are deployed, run from a trusted Windows machine:
+
+```powershell
+.\scripts\test-railway-deployment.ps1 `
+  -BackendUrl "https://<backend-domain>" `
+  -FrontendUrl "https://<frontend-domain>"
+```
+
+It verifies:
+
+- Backend health is exact HTTP 200 with the Cafino payload.
+- Frontend `/login` is HTTP 200.
+- browser CORS preflight allows exactly the configured Frontend origin.
+- `/api/v1/local/bootstrap/` is unavailable on SaaS.
+
+For authenticated acceptance, set temporary smoke credentials in the shell, not in the repository or command history:
+
+```powershell
+$env:CAF_INO_SMOKE_USERNAME="owner"
+$env:CAF_INO_SMOKE_PASSWORD="<temporary-test-password>"
+.\scripts\test-railway-deployment.ps1 `
+  -BackendUrl "https://<backend-domain>" `
+  -FrontendUrl "https://<frontend-domain>"
+Remove-Item Env:CAF_INO_SMOKE_PASSWORD
+```
+
+The script then also requires JWT login and authenticated `/api/v1/me/` as OWNER/platform admin.
+
+## 8. Acceptance endpoints
 
 Before business-flow testing:
 
@@ -130,7 +160,7 @@ GET https://<frontend>/login               -> HTTP 200
 
 Railway's deploy-time healthcheck uses host `healthcheck.railway.app`; Cafino adds it only when Railway runtime variables are detected.
 
-## 8. SaaS acceptance flow
+## 9. SaaS acceptance flow
 
 Run at least:
 
@@ -153,13 +183,14 @@ Login
 
 Also verify Worker and Beat logs show healthy Celery connectivity and only one Beat scheduler is active.
 
-## 9. Release decision
+## 10. Release decision
 
 Do not call the SaaS pilot ready until all are true:
 
 - PR/`main` CI is green on PostgreSQL, Next, Electron/static contracts and installer contract.
 - Railway Backend preflight and migrations succeed.
 - Backend/Frontend healthchecks are exact HTTP 200.
+- `test-railway-deployment.ps1` passes the public-boundary smoke.
 - first Owner can log in.
 - a real checkout completes and appears in reports.
 - Redis/Worker/Beat are healthy.
