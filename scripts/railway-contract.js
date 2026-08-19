@@ -9,6 +9,7 @@ const required=[
   "backend/apps/accounts/management/commands/bootstrap_business_owner.py",
   "backend/apps/core/management/commands/railway_preflight.py",
   "backend/apps/core/tests_railway_health.py","backend/apps/core/tests_railway_preflight.py",
+  "scripts/test-railway-deployment.ps1",
   "docs/RAILWAY_DEPLOYMENT.md","docs/RAILWAY_RELEASE_CHECKLIST.md"
 ];
 for(const rel of required)assert.ok(fs.existsSync(path.join(root,rel)),`Missing ${rel}`);
@@ -35,6 +36,8 @@ const backendEnv=read("backend/.env.railway.example");
 for(const token of ["CAF_INO_ENV=saas","DJANGO_DEBUG=0","${{Postgres.DATABASE_URL}}","${{Redis.REDIS_URL}}","CAF_INO_FRONTEND_ORIGIN=https://"])assert.ok(backendEnv.includes(token),`Backend Railway env template missing ${token}`);
 const frontendEnv=read("frontend/.env.railway.example");
 for(const token of ["NEXT_PUBLIC_API_ROOT=https://","NEXT_PUBLIC_API_URL=https://"])assert.ok(frontendEnv.includes(token),`Frontend Railway env template missing ${token}`);
+const smoke=read("scripts/test-railway-deployment.ps1");
+for(const token of ["https://","/api/v1/health/","/login","Access-Control-Allow-Origin","/api/v1/local/bootstrap/","CAF_INO_SMOKE_USERNAME","/api/token/","/api/v1/me/"])assert.ok(smoke.includes(token),`Railway post-deploy smoke missing ${token}`);
 const docs=read("docs/RAILWAY_DEPLOYMENT.md");assert.ok(docs.includes("bootstrap_business_owner"),"Railway runbook must document the production owner bootstrap.");
 const checklist=read("docs/RAILWAY_RELEASE_CHECKLIST.md");
 for(const token of ["/backend/railway.toml","/frontend/railway.toml","railway_preflight","NEXT_PUBLIC_API_ROOT"] )assert.ok(checklist.includes(token),`Railway release checklist missing ${token}`);
