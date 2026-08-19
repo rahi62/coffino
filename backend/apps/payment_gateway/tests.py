@@ -95,3 +95,30 @@ class GenericGatewayNetworkSafetyTests(GatewayTestBase):
         )
         with self.assertRaisesRegex(ValueError,'HTTPS'):
             create_payment_intent(online)
+
+    @patch('apps.payment_gateway.services.post_json')
+    def test_intent_audit_snapshots_drop_custom_secret_and_pan(self, post_json):
+        post_json.side_effect=[
+            {'authority':'AUTH-AUDIT','payment_url':'https://8.8.8.8/pay/AUTH-AUDIT'},
+            {'success':True,'reference_id':'REF-AUDIT','pan':'6037991234567890','provider_secret':'SHOULD-NOT-PERSIST'},
+        ]
+        _,_,config,_,_,online=self.make_online(
+            deployment='SAAS',provider='GENERIC',callback='https://1.1.1.1',request_url='https://8.8.4.4/request'
+        )
+        config.verify_url='https://8.8.4.4/verify'
+        config.extra={'request_payload':{'vendor_secret':'TOP-SECRET','campaign':'summer'}}
+        config.save(update_fields=['verify_url','extra','updated_at'])
+
+        intent=create_payment_intent(online)
+        request_snapshot=str(intent.request_payload)
+        self.assertNotIn('TOP-SECRET',request_snapshot)
+        self.assertNotIn('vendor_secret',request_snapshot.replace("'custom_field_names': ['campaign', 'vendor_secret']",''))
+        self.assertIn('custom_field_names',intent.request_payload)
+
+        intent=verify_payment(online=online,authority=intent.authority,status='OK')
+        verify_snapshot=str(intent.verify_payload)
+        self.assertEqual(intent.reference_id,'REF-AUDIT')
+        self.assertNotIn('6037991234567890',verify_snapshot)
+        self.assertNotIn('SHOULD-NOT-PERSIST',verify_snapshot)
+        self.assertNotIn('pan',intent.verify_payload)
+        self.assertNotIn('provider_secret',intent.verify_payload)
