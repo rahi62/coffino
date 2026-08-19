@@ -18,7 +18,9 @@ const required=[
   "backend/apps/operations/urls_management.py",
   "backend/apps/accounts/bootstrap.py",
   "backend/apps/core/api/local_bootstrap.py",
+  "backend/apps/core/network_safety.py",
   "backend/apps/core/tests_local_bootstrap.py",
+  "backend/apps/core/tests_network_safety.py",
   "scripts/generate-license-keypair.js",
   "scripts/issue-license.js",
   "scripts/build-release.ps1",
@@ -54,4 +56,17 @@ const runtime=fs.readFileSync(path.join(electron,"src","release-runtime.js"),"ut
 for(const token of ["operations:sync","fingerprintError","diagnostic_request_id","current_blocked"])assert.ok(runtime.includes(token),`Production operations runtime contract missing ${token}`);
 const opsServices=fs.readFileSync(path.join(root,"backend","apps","operations","services.py"),"utf8");
 for(const token of ["core_operations_allowed","remote_commands_allowed","rollout_bucket","sanitize_diagnostic_snapshot"])assert.ok(opsServices.includes(token),`Operations control-plane safety contract missing ${token}`);
+
+const networkSafety=fs.readFileSync(path.join(root,"backend","apps","core","network_safety.py"),"utf8");
+for(const token of ["validate_http_target","NoRedirect","is_private","require_https","max_response_bytes"])assert.ok(networkSafety.includes(token),`Outbound network safety missing ${token}`);
+const notificationServices=fs.readFileSync(path.join(root,"backend","apps","notifications","services.py"),"utf8");
+const gatewayServices=fs.readFileSync(path.join(root,"backend","apps","payment_gateway","services.py"),"utf8");
+for(const [name,source] of [["notifications",notificationServices],["payment_gateway",gatewayServices]]){
+  assert.ok(source.includes("apps.core.network_safety"),`${name} must use shared outbound network safety`);
+  assert.ok(source.includes("post_json"),`${name} must use bounded no-redirect JSON transport`);
+  assert.ok(!source.includes("urllib.request.urlopen"),`${name} must not bypass network safety with direct urlopen`);
+}
+for(const token of ["_network_policy","_validate_navigation_url","require_https","allow_private"])assert.ok(gatewayServices.includes(token),`Payment gateway safety contract missing ${token}`);
+for(const token of ["_provider_network_policy","validate_http_target","require_https","allow_private"])assert.ok(notificationServices.includes(token),`Notification provider safety contract missing ${token}`);
+
 console.log("Cafino desktop release contract passed");
