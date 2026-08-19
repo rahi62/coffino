@@ -3,6 +3,7 @@ import urllib.parse
 from django.db import transaction
 from django.utils import timezone
 
+from apps.businesses.models import Branch
 from apps.core.network_safety import post_json, validate_http_target
 from apps.online_ordering.models import OnlineOrder
 from apps.online_ordering.services import confirm_online_payment
@@ -47,6 +48,39 @@ def _callback_url(cfg, online):
     return callback
 
 
+def _request_audit_snapshot(payload):
+    """Keep useful intent metadata without persisting merchant/customer secrets."""
+    safe={}
+    for key in ('amount','callback_url','description','order_id'):
+        value=payload.get(key)
+        if value not in [None,'']:
+            safe[key]=value
+    sensitive_or_nested={'merchant_id','metadata'}
+    known=set(safe)|sensitive_or_nested
+    custom=sorted(str(key)[:80] for key in payload.keys() if key not in known)[:50]
+    if custom:
+        safe['custom_field_names']=custom
+    return safe
+
+
+def _verify_audit_snapshot(data):
+    """Allowlist scalar verification fields; never persist PAN or arbitrary PSP payloads."""
+    safe={}
+    sources=[data]
+    nested=data.get('data') if isinstance(data,dict) else None
+    if isinstance(nested,dict):
+        sources.append(nested)
+    allowed=('code','status','success','verified','ref_id','reference_id','fee','fee_type')
+    for source in sources:
+        if not isinstance(source,dict):
+            continue
+        for key in allowed:
+            if key in source and isinstance(source[key],(str,int,float,bool)):
+                value=source[key]
+                safe[key]=value[:160] if isinstance(value,str) else value
+    return safe
+
+
 @transaction.atomic
 def create_payment_intent(online):
     online=OnlineOrder.objects.select_for_update().select_related('branch__business','order__branch').get(pk=online.pk)
@@ -62,6 +96,7 @@ def create_payment_intent(online):
         authority=f'MOCK-{online.id}-{payment.id}'
         intent.authority=authority;intent.callback_url=callback
         intent.payment_url=f'{callback}?Status=OK&Authority={urllib.parse.quote(authority)}'
+        intent.request_payload={'amount':amount,'callback_url':callback}
         intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
         return intent
     if cfg.provider==PaymentGatewayConfig.Provider.ZARINPAL:
@@ -76,7 +111,7 @@ def create_payment_intent(online):
         authority=str(result.get('authority') or '')
         if not authority:raise ValueError('Authority در پاسخ زرین‌پال وجود ندارد')
         payment_url=_validate_navigation_url(gateway+urllib.parse.quote(authority,safe=''),branch=online.branch,label='Gateway URL')
-        intent.authority=authority;intent.callback_url=callback;intent.request_payload=payload;intent.payment_url=payment_url;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
+        intent.authority=authority;intent.callback_url=callback;intent.request_payload=_request_audit_snapshot(payload);intent.payment_url=payment_url;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
         return intent
     # Generic HTTP. Field mapping can be adjusted via `extra`, while all
     # outbound calls and returned browser targets remain subject to network policy.
@@ -90,7 +125,7 @@ def create_payment_intent(online):
     url=str(data.get('payment_url') or data.get('url') or '')
     if not authority or not url:raise ValueError('پاسخ درگاه Generic معتبر نیست')
     url=_validate_navigation_url(url,branch=online.branch)
-    intent.authority=authority;intent.callback_url=callback;intent.request_payload=payload;intent.payment_url=url;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
+    intent.authority=authority;intent.callback_url=callback;intent.request_payload=_request_audit_snapshot(payload);intent.payment_url=url;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
     return intent
 
 
@@ -107,6 +142,7 @@ def verify_payment(*,online,authority,status='OK'):
     if intent.authority and authority and intent.authority!=authority:raise ValueError('Authority با Payment Intent تطابق ندارد')
     if cfg.provider==PaymentGatewayConfig.Provider.MOCK:
         ref=f'MOCK-REF-{payment.id}'
+        intent.verify_payload={'status':'mock_verified'}
     elif cfg.provider==PaymentGatewayConfig.Provider.ZARINPAL:
         payload={'merchant_id':cfg.get_merchant_id(),'amount':int(payment.amount),'authority':authority}
         data=_post_json(cfg.verify_url or 'https://api.zarinpal.com/pg/v4/payment/verify.json',payload,timeout=cfg.timeout_seconds,branch=online.branch)
@@ -114,7 +150,7 @@ def verify_payment(*,online,authority,status='OK'):
         if code not in [100,101]:raise ValueError((data.get('errors') or {}).get('message') or 'تأیید پرداخت ناموفق است')
         ref=str(result.get('ref_id') or '')
         if not ref:raise ValueError('Reference ID در پاسخ تأیید زرین‌پال وجود ندارد')
-        intent.verify_payload=data
+        intent.verify_payload=_verify_audit_snapshot(data)
     else:
         headers={};key=cfg.get_api_key()
         if key:headers['Authorization']=f'Bearer {key}'
@@ -124,7 +160,7 @@ def verify_payment(*,online,authority,status='OK'):
         if not bool(data.get('success',data.get('verified',False))):raise ValueError('تأیید Generic Payment ناموفق است')
         ref=str(data.get('reference_id') or data.get('ref_id') or authority)
         if not ref:raise ValueError('Reference ID در پاسخ تأیید Generic وجود ندارد')
-        intent.verify_payload=data
+        intent.verify_payload=_verify_audit_snapshot(data)
     confirm_online_payment(online,reference=ref)
     intent.status=GatewayIntent.Status.VERIFIED;intent.reference_id=ref;intent.verified_at=timezone.now()
     intent.save(update_fields=['status','reference_id','verified_at','verify_payload','updated_at'])
@@ -138,11 +174,7 @@ def refund_gateway_payment(payment,amount):
     if payment.method!=Payment.Method.ONLINE:raise ValueError('Payment آنلاین نیست')
     try:cfg=payment.order.branch.payment_gateway
     except PaymentGatewayConfig.DoesNotExist:raise ValueError('تنظیمات درگاه موجود نیست')
-    branch=payment.order.branch
-    # `payment.order.branch` may have been loaded without Business; fetch only
-    # what network policy needs and keep the payment/refund ledger untouched.
-    if not hasattr(branch,'business'):
-        branch=type(branch).objects.select_related('business').get(pk=branch.pk)
+    branch=Branch.objects.select_related('business').get(pk=payment.order.branch_id)
     try:intent=payment.gateway_intent
     except GatewayIntent.DoesNotExist:raise ValueError('Gateway Intent موجود نیست')
     if intent.status!=GatewayIntent.Status.VERIFIED:raise ValueError('Payment درگاه تأییدشده نیست')
