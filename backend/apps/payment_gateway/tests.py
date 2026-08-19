@@ -67,14 +67,12 @@ class GenericGatewayNetworkSafetyTests(GatewayTestBase):
             'authority':'AUTH-PRIVATE',
             'payment_url':'https://127.0.0.1/pay/AUTH-PRIVATE',
         }
-        _,_,_,_,_,online=self.make_online(
+        _,_,_,_,payment,online=self.make_online(
             deployment='SAAS',provider='GENERIC',callback='https://1.1.1.1',request_url='https://8.8.4.4/request'
         )
         with self.assertRaisesRegex(ValueError,'Private/internal'):
             create_payment_intent(online)
-        intent=GatewayIntent.objects.get(payment=online.order.payments.get(method=Payment.Method.ONLINE))
-        self.assertEqual(intent.status,GatewayIntent.Status.CREATED)
-        self.assertEqual(intent.payment_url,'')
+        self.assertFalse(GatewayIntent.objects.filter(payment=payment).exists())
 
     @patch('apps.payment_gateway.services.post_json')
     def test_local_generic_adapter_may_use_private_http(self, post_json):
