@@ -80,12 +80,13 @@ def post_json(
     allow_private=False,
     require_https=False,
     max_response_bytes=1024 * 1024,
+    parse_response=True,
 ):
     validate_http_target(url, allow_private=allow_private, require_https=require_https)
     request = urllib.request.Request(
         str(url),
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json", **(headers or {})},
+        headers={"Content-Type": "application/json", "Accept": "application/json, text/plain, */*", **(headers or {})},
         method="POST",
     )
     opener = no_redirect_opener()
@@ -96,6 +97,8 @@ def post_json(
         raw = response.read(max_response_bytes + 1)
         if len(raw) > max_response_bytes:
             raise ValueError("Provider response exceeded the safe size limit.")
+        if not parse_response:
+            return {'http_status': code}
         if not raw.strip():
             return {}
         try:
