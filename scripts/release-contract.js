@@ -38,12 +38,12 @@ for(const token of ["forceCodeSigning","nsis","artifactName","CAF_INO_UPDATE_URL
 const build=fs.readFileSync(path.join(root,"scripts","build-release.ps1"),"utf8");
 for(const token of ["CAF_INO_UPDATE_URL","CAF_INO_LICENSE_PUBLIC_KEY_PATH","CSC_LINK","CSC_KEY_PASSWORD","release-manifest.json","SHA256","releaseChannel","prepare-update-feed.ps1","CAF_INO_OPS_ENDPOINT","CAF_INO_TELEMETRY_ENABLED","operationsEnabled","heartbeatIntervalMinutes"])assert.ok(build.includes(token),`Production build gate missing ${token}`);
 const workflow=fs.readFileSync(path.join(root,".github","workflows","release-local.yml"),"utf8");
-for(const token of ["stable","beta","CAF_INO_UPDATE_BASE_URL","smoke-test-installer.ps1","publish_update_feed","CAF_INO_UPDATE_BUCKET","CAF_INO_OPS_ENDPOINT","CAF_INO_TELEMETRY_ENABLED","CAF_INO_OPS_HEARTBEAT_MINUTES"])assert.ok(workflow.includes(token),`Production workflow missing ${token}`);
+for(const token of ["stable","beta","CAF_INO_UPDATE_BASE_URL","smoke-test-installer.ps1","-RuntimeSmoke","-RequireTrustedSignature","publish_update_feed","CAF_INO_UPDATE_BUCKET","CAF_INO_OPS_ENDPOINT","CAF_INO_TELEMETRY_ENABLED","CAF_INO_OPS_HEARTBEAT_MINUTES"])assert.ok(workflow.includes(token),`Production workflow missing ${token}`);
 const entry=fs.readFileSync(path.join(electron,"src","entry.js"),"utf8");
 assert.ok(entry.includes("--cafino-smoke-check"),"Packaged smoke-check entrypoint is required");
 assert.ok(entry.includes("operationsEnabled"),"Packaged smoke check must validate Operations config");
 const smoke=fs.readFileSync(path.join(root,"scripts","smoke-test-installer.ps1"),"utf8");
-for(const token of ["RuntimeSmoke","AllowExistingInstall","/api/v1/health/","/login","taskkill.exe","Uninstall Cafino.exe"])assert.ok(smoke.includes(token),`Local installer smoke contract missing ${token}`);
+for(const token of ["RuntimeSmoke","AllowExistingInstall","/api/v1/health/","/login","/api/v1/local/bootstrap/","/api/token/","/api/v1/me/","OWNER","survived a full application restart","taskkill.exe","Uninstall Cafino.exe"])assert.ok(smoke.includes(token),`Local installer smoke contract missing ${token}`);
 const localAcceptance=fs.readFileSync(path.join(root,"scripts","test-local-installer.ps1"),"utf8");
 assert.ok(localAcceptance.includes("-RuntimeSmoke"),"Pilot Local acceptance must boot the installed Backend and Frontend.");
 const bootstrapApi=fs.readFileSync(path.join(root,"backend","apps","core","api","local_bootstrap.py"),"utf8");
