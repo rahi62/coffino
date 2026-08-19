@@ -91,6 +91,9 @@ def enqueue_order_ready(order):
 
 
 def _request_json(*, endpoint, payload, headers, timeout, allow_private=False, require_https=False):
+    # SMS/pager success is defined by a 2xx response. Some providers return
+    # plain text rather than JSON, so transport validation is strict while the
+    # response body is intentionally ignored.
     return post_json(
         endpoint,
         payload,
@@ -98,6 +101,7 @@ def _request_json(*, endpoint, payload, headers, timeout, allow_private=False, r
         timeout=timeout,
         allow_private=allow_private,
         require_https=require_https,
+        parse_response=False,
     )
 
 
