@@ -1,7 +1,6 @@
 import ipaddress
 import json
 import socket
-import urllib.error
 import urllib.request
 from urllib.parse import urlparse
 
@@ -32,6 +31,19 @@ def validate_http_target(url, *, allow_private=False, require_https=False, resol
         raise ValueError("Provider URL must be a valid HTTP/HTTPS URL.")
     if parsed.username or parsed.password:
         raise ValueError("Credentials inside provider URLs are not allowed.")
+
+    # Even config-only checks (resolve=False) must reject literal private IPs.
+    # Hostname DNS is intentionally deferred until live/send time so a temporary
+    # DNS outage does not make a saved configuration look syntactically invalid.
+    try:
+        if _unsafe_ip(parsed.hostname) and not allow_private:
+            raise ValueError("Private/internal provider addresses are blocked in server deployments.")
+    except ValueError as exc:
+        if str(exc).startswith("Private/internal"):
+            raise
+        # Hostname rather than an IP literal; DNS handling continues below when requested.
+        pass
+
     if not resolve:
         return parsed
 
