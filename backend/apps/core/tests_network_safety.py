@@ -18,6 +18,10 @@ class NetworkSafetyTests(SimpleTestCase):
         with self.assertRaisesRegex(ValueError, 'Private/internal'):
             validate_http_target('https://127.0.0.1/api', require_https=True)
 
+    def test_config_only_check_still_blocks_literal_private_ip(self):
+        with self.assertRaisesRegex(ValueError, 'Private/internal'):
+            validate_http_target('https://192.168.1.50/api', require_https=True, resolve=False)
+
     def test_literal_private_ip_is_allowed_for_local(self):
         parsed = validate_http_target('http://192.168.1.50/api', allow_private=True)
         self.assertEqual(parsed.hostname, '192.168.1.50')
