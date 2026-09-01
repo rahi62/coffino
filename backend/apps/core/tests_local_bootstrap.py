@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.businesses.models import Branch, Business
 from apps.catalog.models import Product
@@ -66,6 +66,7 @@ class LocalFirstRunBootstrapTests(TestCase):
         self.assertEqual(Business.objects.count(), 0)
         self.assertEqual(get_user_model().objects.count(), 0)
 
+    @override_settings(ENVIRONMENT="saas")
     def test_real_enablement_is_closed_on_non_local_postgres_ci_profile(self):
         response = self.client.get(self.endpoint)
         self.assertEqual(response.status_code, 404)
