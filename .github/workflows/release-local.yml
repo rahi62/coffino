@@ -102,12 +102,12 @@ jobs:
           if ([bool]$m.operations_enabled -ne $expectOps) { throw "Operations manifest state mismatch" }
           if ([bool]$m.telemetry_enabled -ne ($env:CAF_INO_TELEMETRY_ENABLED -eq '1')) { throw "Telemetry manifest state mismatch" }
 
-      - name: Clean Windows install + packaged smoke test
+      - name: Clean Windows install + full Local runtime smoke
         shell: powershell
         run: |
           $installer=Get-ChildItem electron/release -Filter "Cafino-Setup-*.exe" | Select-Object -First 1
           if (-not $installer) { throw "Installer not found" }
-          .\scripts\smoke-test-installer.ps1 -Installer $installer.FullName -RequireTrustedSignature
+          .\scripts\smoke-test-installer.ps1 -Installer $installer.FullName -RequireTrustedSignature -RuntimeSmoke
 
       - name: Upload verified signed release bundle
         uses: actions/upload-artifact@v4

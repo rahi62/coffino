@@ -4,7 +4,7 @@ from datetime import timedelta, timezone as dt_timezone
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -73,6 +73,7 @@ def _can_manage_device(user,device):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([OpsDeviceThrottle])
 def device_register(request):
@@ -108,6 +109,7 @@ def device_register(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([OpsDeviceThrottle])
 def device_heartbeat(request):
@@ -153,6 +155,7 @@ def device_heartbeat(request):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([OpsDeviceThrottle])
 def device_policy(request):
@@ -162,6 +165,7 @@ def device_policy(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([OpsDeviceThrottle])
 def device_event(request):
@@ -204,6 +208,7 @@ def device_event(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([OpsDeviceThrottle])
 def device_diagnostic_submit(request):

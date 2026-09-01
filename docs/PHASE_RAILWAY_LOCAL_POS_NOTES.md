@@ -1,0 +1,1 @@
+Validation targets for this phase are documented in the pull request: PostgreSQL/Django, Next production build, Electron POS bridge tests, static Railway/POS contracts, and Windows NSIS install smoke. Vendor-specific card-terminal SDK validation remains hardware/provider dependent.

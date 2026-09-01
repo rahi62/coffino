@@ -1,20 +1,13 @@
-import ipaddress
-import socket
 import urllib.error
 import urllib.request
-from urllib.parse import urlparse
 
 from apps.businesses.models import BusinessModule
 from apps.catalog.models import Product
+from apps.core.network_safety import no_redirect_opener, validate_http_target
 from apps.notifications.models import SmsProviderConfig
 from apps.online_ordering.models import OnlineMenuSettings
 from apps.payment_gateway.models import PaymentGatewayConfig
 from apps.printing.models import PrinterDevice
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
 
 
 def _row(key, title, status, message, *, mode='configuration', details=None):
@@ -35,44 +28,43 @@ def _module_map(branch):
     }
 
 
-def _public_http_target(url, *, allow_private=False):
-    parsed = urlparse(str(url or ''))
-    if parsed.scheme not in ['http', 'https'] or not parsed.hostname:
-        return False, 'URL معتبر HTTP/HTTPS نیست.'
-    if parsed.username or parsed.password:
-        return False, 'قرار دادن credential داخل URL برای Health Check مجاز نیست.'
+def _provider_policy(branch):
+    local = branch.business.deployment_type == 'LOCAL'
+    return {'allow_private': local, 'require_https': not local}
+
+
+def _config_target_error(url, branch):
     try:
-        addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == 'https' else 80), type=socket.SOCK_STREAM)
-    except OSError:
-        return False, 'نام میزبان قابل Resolve نیست.'
-    for item in addresses:
-        try:
-            ip = ipaddress.ip_address(item[4][0])
-        except ValueError:
-            continue
-        unsafe = ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified or ip.is_private
-        if unsafe and not allow_private:
-            return False, 'Health Check شبکه برای آدرس خصوصی/داخلی در استقرار سروری مسدود است.'
-    return True, ''
+        validate_http_target(url, resolve=False, **_provider_policy(branch))
+        return ''
+    except ValueError as exc:
+        return str(exc)
 
 
-def _safe_http_probe(url, *, timeout=5, allow_private=False):
-    allowed, reason = _public_http_target(url, allow_private=allow_private)
-    if not allowed:
-        return False, None, reason
+def _safe_http_probe(url, *, timeout=5, allow_private=False, require_https=False):
+    try:
+        validate_http_target(
+            url,
+            allow_private=allow_private,
+            require_https=require_https,
+            resolve=True,
+        )
+    except ValueError as exc:
+        return False, None, str(exc)
     request = urllib.request.Request(
         str(url),
         method='HEAD',
         headers={'User-Agent': 'Cafino-Health/1.0', 'Accept': '*/*'},
     )
-    opener = urllib.request.build_opener(_NoRedirect())
+    opener = no_redirect_opener()
     try:
         with opener.open(request, timeout=max(1, min(int(timeout or 5), 8))) as response:
             code = int(getattr(response, 'status', 200) or 200)
             return code < 500, code, 'Endpoint در دسترس است.' if code < 500 else 'Endpoint خطای سرور برگرداند.'
     except urllib.error.HTTPError as error:
         code = int(error.code)
-        # 3xx/4xx (including 401/403/405) proves the host and HTTP service are reachable.
+        # 3xx/4xx (including 401/403/405) proves the selected host and HTTP
+        # service responded; NoRedirect prevents credentials from being forwarded.
         return code < 500, code, 'Endpoint قابل دسترس است؛ پاسخ کاربردی نیازمند درخواست معتبر Provider است.' if code < 500 else 'Endpoint خطای سرور برگرداند.'
     except (urllib.error.URLError, TimeoutError, OSError):
         return False, None, 'اتصال شبکه به Endpoint برقرار نشد.'
@@ -98,6 +90,9 @@ def _online_health(branch, enabled):
     product_count = Product.objects.filter(branch=branch, is_available=True).count()
     if not settings.public_slug or not settings.public_base_url:
         return _row('online_menu', 'منوی آنلاین', 'error', 'Slug یا Public Base URL کامل نیست.', mode='application')
+    target_error = _config_target_error(settings.public_base_url, branch)
+    if target_error:
+        return _row('online_menu', 'منوی آنلاین', 'error', f'Public Base URL امن نیست: {target_error}', mode='application')
     if product_count == 0:
         return _row('online_menu', 'منوی آنلاین', 'error', 'هیچ محصول فعالی برای نمایش در منوی عمومی وجود ندارد.', mode='application', details={'products': 0})
     if not settings.is_enabled or not settings.accepting_orders:
@@ -119,10 +114,16 @@ def _sms_health(branch, enabled, *, live=False):
         'api_key_configured': bool(config.api_key_encrypted),
         'sender_configured': bool(config.sender),
     }
+    target_error = _config_target_error(config.endpoint_url, branch)
+    if target_error:
+        return _row('sms', 'پیامک', 'error', f'Endpoint پیامک امن نیست: {target_error}', details=details)
     if not live:
-        return _row('sms', 'پیامک', 'warning', 'پیکربندی کامل است؛ برای بررسی دسترسی شبکه Live Check را اجرا کنید.', mode='configuration', details=details)
-    allow_private = branch.business.deployment_type == 'LOCAL'
-    ok, code, message = _safe_http_probe(config.endpoint_url, timeout=config.timeout_seconds, allow_private=allow_private)
+        return _row('sms', 'پیامک', 'warning', 'پیکربندی امن است؛ برای بررسی DNS/دسترسی شبکه Live Check را اجرا کنید.', mode='configuration', details=details)
+    ok, code, message = _safe_http_probe(
+        config.endpoint_url,
+        timeout=config.timeout_seconds,
+        **_provider_policy(branch),
+    )
     details['http_status'] = code
     return _row('sms', 'پیامک', 'ok' if ok else 'error', message, mode='network', details=details)
 
@@ -144,8 +145,11 @@ def _gateway_health(branch, enabled, *, live=False):
     details = {'provider': config.provider, 'sandbox': bool(config.sandbox)}
     if not config.callback_base_url:
         return _row('payment_gateway', 'درگاه پرداخت', 'error', 'Callback Base URL تنظیم نشده است.', details=details)
+    callback_error = _config_target_error(config.callback_base_url, branch)
+    if callback_error:
+        return _row('payment_gateway', 'درگاه پرداخت', 'error', f'Callback Base URL امن نیست: {callback_error}', details=details)
     if config.provider == PaymentGatewayConfig.Provider.MOCK:
-        return _row('payment_gateway', 'درگاه پرداخت', 'ok', 'درگاه Mock و Callback برای تست داخلی Cafino آماده هستند.', mode='simulation', details=details)
+        return _row('payment_gateway', 'درگاه پرداخت', 'ok', 'درگاه Mock و Callback امن برای تست داخلی Cafino آماده هستند.', mode='simulation', details=details)
     if config.provider == PaymentGatewayConfig.Provider.ZARINPAL:
         try:
             merchant_ready = bool(config.get_merchant_id())
@@ -153,16 +157,30 @@ def _gateway_health(branch, enabled, *, live=False):
             merchant_ready = False
         if not merchant_ready:
             return _row('payment_gateway', 'درگاه پرداخت', 'error', 'Merchant ID زرین‌پال تنظیم یا قابل خواندن نیست.', details=details)
-        target = 'https://api.zarinpal.com/pg/v4/payment/request.json'
+        target = config.request_url or 'https://api.zarinpal.com/pg/v4/payment/request.json'
     else:
         if not config.request_url:
             return _row('payment_gateway', 'درگاه پرداخت', 'error', 'Request URL برای درگاه Generic تنظیم نشده است.', details=details)
         target = config.request_url
         details['api_key_configured'] = bool(config.api_key_encrypted)
+    target_error = _config_target_error(target, branch)
+    if target_error:
+        return _row('payment_gateway', 'درگاه پرداخت', 'error', f'Provider Request URL امن نیست: {target_error}', details=details)
+    if config.verify_url:
+        verify_error = _config_target_error(config.verify_url, branch)
+        if verify_error:
+            return _row('payment_gateway', 'درگاه پرداخت', 'error', f'Provider Verify URL امن نیست: {verify_error}', details=details)
+    if config.refund_url:
+        refund_error = _config_target_error(config.refund_url, branch)
+        if refund_error:
+            return _row('payment_gateway', 'درگاه پرداخت', 'error', f'Provider Refund URL امن نیست: {refund_error}', details=details)
     if not live:
-        return _row('payment_gateway', 'درگاه پرداخت', 'warning', 'پیکربندی Provider کامل است؛ برای بررسی دسترسی شبکه Live Check را اجرا کنید.', details=details)
-    allow_private = branch.business.deployment_type == 'LOCAL'
-    ok, code, message = _safe_http_probe(target, timeout=config.timeout_seconds, allow_private=allow_private)
+        return _row('payment_gateway', 'درگاه پرداخت', 'warning', 'پیکربندی Provider امن است؛ برای بررسی DNS/دسترسی شبکه Live Check را اجرا کنید.', details=details)
+    ok, code, message = _safe_http_probe(
+        target,
+        timeout=config.timeout_seconds,
+        **_provider_policy(branch),
+    )
     details['http_status'] = code
     return _row('payment_gateway', 'درگاه پرداخت', 'ok' if ok else 'error', message, mode='network', details=details)
 

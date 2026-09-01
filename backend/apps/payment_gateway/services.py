@@ -1,22 +1,89 @@
-import json,urllib.request,urllib.parse
+import urllib.parse
+
 from django.db import transaction
 from django.utils import timezone
-from .models import PaymentGatewayConfig,GatewayIntent
-from apps.payments.models import Payment
+
+from apps.businesses.models import Branch
+from apps.core.network_safety import post_json, validate_http_target
 from apps.online_ordering.models import OnlineOrder
 from apps.online_ordering.services import confirm_online_payment
+from apps.payments.models import Payment
+from .models import GatewayIntent, PaymentGatewayConfig
 
-def _post_json(url,payload,headers=None,timeout=15):
-    req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json',**(headers or {})},method='POST')
-    with urllib.request.urlopen(req,timeout=timeout) as r:return json.loads(r.read().decode() or '{}')
 
-def _callback_url(cfg,online):
+def _network_policy(branch):
+    local = branch.business.deployment_type == 'LOCAL'
+    return {'allow_private': local, 'require_https': not local}
+
+
+def _post_json(url, payload, headers=None, timeout=15, *, branch):
+    if not url:
+        raise ValueError('Provider API URL تنظیم نشده است')
+    return post_json(
+        url,
+        payload,
+        headers=headers,
+        timeout=timeout,
+        **_network_policy(branch),
+    )
+
+
+def _validate_navigation_url(url, *, branch, label='Payment URL'):
+    if not url:
+        raise ValueError(f'{label} در پاسخ Provider وجود ندارد')
+    # The browser will navigate to this URL. In public deployments it must not
+    # point to localhost/private infrastructure or downgrade to plain HTTP.
+    validate_http_target(url, **_network_policy(branch))
+    return str(url)
+
+
+def _callback_url(cfg, online):
     base=cfg.callback_base_url.rstrip('/')
-    return f'{base}/api/v1/public/payments/{online.access_token}/callback/' if base else ''
+    callback=f'{base}/api/v1/public/payments/{online.access_token}/callback/' if base else ''
+    if not callback:
+        raise ValueError('Callback Base URL تنظیم نشده است')
+    # Callback is handed to the PSP rather than fetched by Cafino, but the same
+    # public/private policy prevents an unsafe callback from entering a live intent.
+    validate_http_target(callback, **_network_policy(online.branch))
+    return callback
+
+
+def _request_audit_snapshot(payload):
+    """Keep useful intent metadata without persisting merchant/customer secrets."""
+    safe={}
+    for key in ('amount','callback_url','description','order_id'):
+        value=payload.get(key)
+        if value not in [None,'']:
+            safe[key]=value
+    sensitive_or_nested={'merchant_id','metadata'}
+    known=set(safe)|sensitive_or_nested
+    custom=sorted(str(key)[:80] for key in payload.keys() if key not in known)[:50]
+    if custom:
+        safe['custom_field_names']=custom
+    return safe
+
+
+def _verify_audit_snapshot(data):
+    """Allowlist scalar verification fields; never persist PAN or arbitrary PSP payloads."""
+    safe={}
+    sources=[data]
+    nested=data.get('data') if isinstance(data,dict) else None
+    if isinstance(nested,dict):
+        sources.append(nested)
+    allowed=('code','status','success','verified','ref_id','reference_id','fee','fee_type')
+    for source in sources:
+        if not isinstance(source,dict):
+            continue
+        for key in allowed:
+            if key in source and isinstance(source[key],(str,int,float,bool)):
+                value=source[key]
+                safe[key]=value[:160] if isinstance(value,str) else value
+    return safe
+
 
 @transaction.atomic
 def create_payment_intent(online):
-    online=OnlineOrder.objects.select_for_update().select_related('order__branch').get(pk=online.pk)
+    online=OnlineOrder.objects.select_for_update().select_related('branch__business','order__branch').get(pk=online.pk)
     payment=online.order.payments.filter(method=Payment.Method.ONLINE,status=Payment.Status.PENDING).first()
     if not payment:raise ValueError('Online Payment در انتظار وجود ندارد')
     try:cfg=online.branch.payment_gateway
@@ -29,6 +96,7 @@ def create_payment_intent(online):
         authority=f'MOCK-{online.id}-{payment.id}'
         intent.authority=authority;intent.callback_url=callback
         intent.payment_url=f'{callback}?Status=OK&Authority={urllib.parse.quote(authority)}'
+        intent.request_payload={'amount':amount,'callback_url':callback}
         intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
         return intent
     if cfg.provider==PaymentGatewayConfig.Provider.ZARINPAL:
@@ -37,28 +105,33 @@ def create_payment_intent(online):
         request_url=cfg.request_url or 'https://api.zarinpal.com/pg/v4/payment/request.json'
         gateway=cfg.gateway_url or 'https://www.zarinpal.com/pg/StartPay/'
         payload={'merchant_id':merchant,'amount':amount,'callback_url':callback,'description':f'Cafino Order #{online.order.order_number}','metadata':{'mobile':online.customer_phone or ''}}
-        data=_post_json(request_url,payload,timeout=cfg.timeout_seconds)
+        data=_post_json(request_url,payload,timeout=cfg.timeout_seconds,branch=online.branch)
         result=data.get('data') or {}
         if int(result.get('code',0)) not in [100,101]:raise ValueError((data.get('errors') or {}).get('message') or 'خطا در ایجاد پرداخت')
-        authority=result.get('authority')
-        intent.authority=authority;intent.callback_url=callback;intent.request_payload=payload;intent.payment_url=gateway+authority;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
+        authority=str(result.get('authority') or '')
+        if not authority:raise ValueError('Authority در پاسخ زرین‌پال وجود ندارد')
+        payment_url=_validate_navigation_url(gateway+urllib.parse.quote(authority,safe=''),branch=online.branch,label='Gateway URL')
+        intent.authority=authority;intent.callback_url=callback;intent.request_payload=_request_audit_snapshot(payload);intent.payment_url=payment_url;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
         return intent
-    # Generic HTTP. field mapping can be adjusted via `extra`.
+    # Generic HTTP. Field mapping can be adjusted via `extra`, while all
+    # outbound calls and returned browser targets remain subject to network policy.
     headers={}
     key=cfg.get_api_key()
     if key:headers['Authorization']=f'Bearer {key}'
     payload={'amount':amount,'callback_url':callback,'order_id':str(online.order.id)}
     payload.update(cfg.extra.get('request_payload',{}) if cfg.extra else {})
-    data=_post_json(cfg.request_url,payload,headers,timeout=cfg.timeout_seconds)
+    data=_post_json(cfg.request_url,payload,headers,timeout=cfg.timeout_seconds,branch=online.branch)
     authority=str(data.get('authority') or data.get('payment_id') or data.get('id') or '')
     url=str(data.get('payment_url') or data.get('url') or '')
     if not authority or not url:raise ValueError('پاسخ درگاه Generic معتبر نیست')
-    intent.authority=authority;intent.callback_url=callback;intent.request_payload=payload;intent.payment_url=url;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
+    url=_validate_navigation_url(url,branch=online.branch)
+    intent.authority=authority;intent.callback_url=callback;intent.request_payload=_request_audit_snapshot(payload);intent.payment_url=url;intent.status=GatewayIntent.Status.REDIRECTED;intent.save()
     return intent
+
 
 @transaction.atomic
 def verify_payment(*,online,authority,status='OK'):
-    online=OnlineOrder.objects.select_for_update().select_related('order__branch').get(pk=online.pk)
+    online=OnlineOrder.objects.select_for_update().select_related('branch__business','order__branch').get(pk=online.pk)
     payment=online.order.payments.filter(method=Payment.Method.ONLINE).first()
     if not payment:raise ValueError('Payment یافت نشد')
     intent=GatewayIntent.objects.select_for_update().get(payment=payment)
@@ -69,20 +142,25 @@ def verify_payment(*,online,authority,status='OK'):
     if intent.authority and authority and intent.authority!=authority:raise ValueError('Authority با Payment Intent تطابق ندارد')
     if cfg.provider==PaymentGatewayConfig.Provider.MOCK:
         ref=f'MOCK-REF-{payment.id}'
+        intent.verify_payload={'status':'mock_verified'}
     elif cfg.provider==PaymentGatewayConfig.Provider.ZARINPAL:
         payload={'merchant_id':cfg.get_merchant_id(),'amount':int(payment.amount),'authority':authority}
-        data=_post_json(cfg.verify_url or 'https://api.zarinpal.com/pg/v4/payment/verify.json',payload,timeout=cfg.timeout_seconds)
+        data=_post_json(cfg.verify_url or 'https://api.zarinpal.com/pg/v4/payment/verify.json',payload,timeout=cfg.timeout_seconds,branch=online.branch)
         result=data.get('data') or {};code=int(result.get('code',0))
         if code not in [100,101]:raise ValueError((data.get('errors') or {}).get('message') or 'تأیید پرداخت ناموفق است')
         ref=str(result.get('ref_id') or '')
-        intent.verify_payload=data
+        if not ref:raise ValueError('Reference ID در پاسخ تأیید زرین‌پال وجود ندارد')
+        intent.verify_payload=_verify_audit_snapshot(data)
     else:
         headers={};key=cfg.get_api_key()
         if key:headers['Authorization']=f'Bearer {key}'
+        if not cfg.verify_url:raise ValueError('Verify URL برای درگاه Generic تنظیم نشده است')
         payload={'authority':authority,'payment_id':authority,'amount':int(payment.amount)}
-        data=_post_json(cfg.verify_url,payload,headers,timeout=cfg.timeout_seconds)
+        data=_post_json(cfg.verify_url,payload,headers,timeout=cfg.timeout_seconds,branch=online.branch)
         if not bool(data.get('success',data.get('verified',False))):raise ValueError('تأیید Generic Payment ناموفق است')
-        ref=str(data.get('reference_id') or data.get('ref_id') or authority);intent.verify_payload=data
+        ref=str(data.get('reference_id') or data.get('ref_id') or authority)
+        if not ref:raise ValueError('Reference ID در پاسخ تأیید Generic وجود ندارد')
+        intent.verify_payload=_verify_audit_snapshot(data)
     confirm_online_payment(online,reference=ref)
     intent.status=GatewayIntent.Status.VERIFIED;intent.reference_id=ref;intent.verified_at=timezone.now()
     intent.save(update_fields=['status','reference_id','verified_at','verify_payload','updated_at'])
@@ -96,6 +174,7 @@ def refund_gateway_payment(payment,amount):
     if payment.method!=Payment.Method.ONLINE:raise ValueError('Payment آنلاین نیست')
     try:cfg=payment.order.branch.payment_gateway
     except PaymentGatewayConfig.DoesNotExist:raise ValueError('تنظیمات درگاه موجود نیست')
+    branch=Branch.objects.select_related('business').get(pk=payment.order.branch_id)
     try:intent=payment.gateway_intent
     except GatewayIntent.DoesNotExist:raise ValueError('Gateway Intent موجود نیست')
     if intent.status!=GatewayIntent.Status.VERIFIED:raise ValueError('Payment درگاه تأییدشده نیست')
@@ -112,8 +191,10 @@ def refund_gateway_payment(payment,amount):
         'merchant_id':cfg.get_merchant_id() or '',
     }
     if cfg.extra:payload.update(cfg.extra.get('refund_payload',{}))
-    data=_post_json(cfg.refund_url,payload,headers,timeout=cfg.timeout_seconds)
+    data=_post_json(cfg.refund_url,payload,headers,timeout=cfg.timeout_seconds,branch=branch)
     if not bool(data.get('success',data.get('refunded',False))):
         code=data.get('code')
         if code not in [100,101,'100','101']:raise ValueError('PSP Refund تأیید نشد')
-    return str(data.get('reference_id') or data.get('ref_id') or data.get('refund_id') or intent.reference_id)
+    reference=str(data.get('reference_id') or data.get('ref_id') or data.get('refund_id') or intent.reference_id)
+    if not reference:raise ValueError('PSP Refund reference وجود ندارد')
+    return reference

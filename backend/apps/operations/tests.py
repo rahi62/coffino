@@ -66,7 +66,9 @@ class OperationsControlPlaneTests(APITestCase):
 
     def test_device_token_auth_and_deterministic_rollout(self):
         registered=self.register();token=registered.data['device_token']
-        ReleasePolicy.objects.create(channel='stable',target_version='1.3.0',rollout_percent=0)
+        ReleasePolicy.objects.update_or_create(
+            channel='stable',defaults={'target_version':'1.3.0','rollout_percent':0},
+        )
         headers={'HTTP_AUTHORIZATION':f'Bearer {token}'}
         first=self.client.get('/api/ops/v1/policy/',**headers)
         second=self.client.get('/api/ops/v1/policy/',**headers)
@@ -138,7 +140,7 @@ class OperationsControlPlaneTests(APITestCase):
         self.assertEqual(response.data[0]['license_id'],'LIC-OPS-1')
 
     def test_release_policy_mutation_requires_platform_admin(self):
-        ReleasePolicy.objects.create(channel='stable')
+        ReleasePolicy.objects.update_or_create(channel='stable')
         self.client.force_authenticate(self.owner)
         denied=self.client.patch('/api/v1/operations/policies/stable/',{'rollout_percent':25},format='json')
         self.assertEqual(denied.status_code,403)

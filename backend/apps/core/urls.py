@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from apps.core.views import *
 from apps.core.api.kitchen_actions import kitchen_ticket_done
+from apps.core.api.local_bootstrap import local_bootstrap
 from apps.dashboard.views import dashboard
 
 r=DefaultRouter()
@@ -54,7 +55,7 @@ r.register("push-provider",PushProviderConfigVS,basename="push-provider")
 
 
 urlpatterns=[
-    path("health/",health),path("me/",me),path("dashboard/",dashboard),path("checkout/",checkout),
+    path("health/",health),path("local/bootstrap/",local_bootstrap),path("me/",me),path("dashboard/",dashboard),path("checkout/",checkout),
     path("purchases/create/",create_multi_purchase),path("reports/financial/",financial_report),
     path("approvals/request/",request_approval),path("daily-close/",daily_close),
     path("reports/sales/",sales_reports),path("reports/food-cost/",food_cost),path("reports/kpi/",kpi_report),
