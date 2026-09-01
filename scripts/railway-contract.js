@@ -31,7 +31,9 @@ for(const token of ["postgresql","CELERY_BROKER_URL","SECURE_SSL_REDIRECT","heal
   assert.ok(preflight.includes(lookup),`Railway preflight missing ${lookup}`);
 }
 const bootstrap=read("backend/apps/accounts/management/commands/bootstrap_business_owner.py");
-for(const token of ["CAF_INO_BOOTSTRAP_OWNER_PASSWORD","bootstrap_business_owner","User.Role.OWNER"])assert.ok(bootstrap.includes(token),`Bootstrap command missing ${token}`);
+for(const token of ["CAF_INO_BOOTSTRAP_OWNER_PASSWORD","bootstrap_business_owner"])assert.ok(bootstrap.includes(token),`Bootstrap command missing ${token}`);
+const bootstrapService=read("backend/apps/accounts/bootstrap.py");
+assert.ok(bootstrapService.includes("User.Role.OWNER"),"Bootstrap service must create an OWNER account");
 const backendEnv=read("backend/.env.railway.example");
 for(const token of ["CAF_INO_ENV=saas","DJANGO_DEBUG=0","${{Postgres.DATABASE_URL}}","${{Redis.REDIS_URL}}","CAF_INO_FRONTEND_ORIGIN=https://"])assert.ok(backendEnv.includes(token),`Backend Railway env template missing ${token}`);
 const frontendEnv=read("frontend/.env.railway.example");
