@@ -2,7 +2,7 @@
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import {useEffect,useState} from "react";
-import {LayoutDashboard,ShoppingCart,ClipboardList,UtensilsCrossed,Package,Armchair,ShoppingBag,LogOut,HardDrive,WalletCards,Truck,Boxes,FlaskConical,BarChart3,ReceiptText,UsersRound,ShieldCheck,FileClock,CalendarCheck2,LineChart,Settings2,BadgePercent,UserRoundCheck,Trash2,Building2,ClipboardCheck,ArrowRightLeft,Factory,Percent,Printer,CalendarDays,Gift,MessageSquare,Globe2,Layers3,PackageSearch,Bike,CreditCard,ArrowLeftRight,ScanLine,ChevronDown} from "lucide-react";
+import {LayoutDashboard,ShoppingCart,ClipboardList,UtensilsCrossed,Package,Armchair,ShoppingBag,LogOut,HardDrive,WalletCards,Truck,Boxes,FlaskConical,BarChart3,ReceiptText,UsersRound,ShieldCheck,FileClock,CalendarCheck2,LineChart,Settings2,BadgePercent,UserRoundCheck,Trash2,Building2,ClipboardCheck,ArrowRightLeft,Factory,CalendarDays,Gift,Layers3,PackageSearch,Bike,ArrowLeftRight,ScanLine,ChevronDown,Menu,X} from "lucide-react";
 import {api,clearToken} from "@/lib/api";
 import {localizeLegacyText,t} from "@/lib/i18n";
 const links:any[]=[
@@ -22,12 +22,30 @@ const sections=[
 ];
 export default function Sidebar(){
  const [perms,setPerms]=useState<Record<string,boolean>|null>(null);
+ const [mobileOpen,setMobileOpen]=useState(false);
  const pathname=usePathname();
  const activeSection=sections.find(section=>section.hrefs.some(href=>href==="/"?pathname==="/":pathname===href||pathname.startsWith(`${href}/`)))?.id||"main";
  const [openSections,setOpenSections]=useState<Record<string,boolean>>(()=>({main:true,[activeSection]:true}));
  useEffect(()=>{const reload=()=>{if(location.pathname!=="/login"&&!location.pathname.startsWith("/menu/"))api<any>("/permissions/me/").then(x=>setPerms(x.permissions)).catch(()=>setPerms({}))};reload();window.addEventListener("cafino-permissions-changed",reload);return()=>window.removeEventListener("cafino-permissions-changed",reload)},[]);
- useEffect(()=>{setOpenSections(current=>({...current,[activeSection]:true}))},[activeSection]);
+ useEffect(()=>{setOpenSections(current=>({...current,[activeSection]:true}));setMobileOpen(false)},[activeSection,pathname]);
+ useEffect(()=>{
+  if(!mobileOpen)return;
+  const previous=document.body.style.overflow;
+  document.body.style.overflow="hidden";
+  return()=>{document.body.style.overflow=previous};
+ },[mobileOpen]);
  if(typeof window!=="undefined"&&(location.pathname==="/login"||location.pathname.startsWith("/menu/")))return null;
  const visible=links.filter(x=>!x[3]||(perms!==null&&perms[x[3]]));
- return <aside className="sticky top-0 flex max-h-screen min-h-screen w-64 flex-col overflow-y-auto bg-[#211711] p-4 text-white"><div className="mb-6 text-2xl font-black">کافینو</div><nav className="space-y-3">{sections.map(section=>{const rows=visible.filter(([href])=>section.hrefs.includes(href));if(!rows.length)return null;const expanded=Boolean(openSections[section.id]);return <section key={section.id} aria-label={section.title}><button type="button" className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-right text-xs font-bold tracking-wide text-white/55 transition-colors hover:bg-white/5 hover:text-white" onClick={()=>setOpenSections(current=>({...current,[section.id]:!current[section.id]}))} aria-expanded={expanded} aria-controls={`sidebar-${section.id}`}><span>{section.title}</span><ChevronDown size={16} className={`transition-transform ${expanded?"rotate-180":""}`} aria-hidden="true"/></button>{expanded&&<div id={`sidebar-${section.id}`} className="mt-1 space-y-1">{rows.map(([href,label,Icon])=>{const active=href==="/"?pathname==="/":pathname===href||pathname.startsWith(`${href}/`);return <Link key={href} href={href} aria-current={active?"page":undefined} className={`flex items-center gap-3 rounded-xl border-r-4 px-3 py-2.5 transition-colors ${active?"border-[#e5ad62] bg-[#b9792d] font-bold text-white shadow-[0_6px_18px_rgba(185,121,45,.28)]":"border-transparent text-white/80 hover:bg-white/10 hover:text-white"}`}><Icon size={18} strokeWidth={active?2.5:2}/>{localizeLegacyText(label)}</Link>})}</div>}</section>})}</nav><button className="mt-8 flex items-center gap-2 border-t border-white/10 pt-5 text-white/70 transition-colors hover:text-white" onClick={()=>{clearToken();location.href="/login"}}><LogOut size={18}/>{t("nav.logout","خروج")}</button></aside>
+ return <>
+  <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-white/10 bg-[#211711] px-3 text-white shadow-lg lg:hidden">
+   <div className="min-w-0"><div className="text-lg font-black leading-none">کافینو</div><div className="mt-1 truncate text-[11px] text-white/55">مدیریت کافه و رستوران</div></div>
+   <button data-testid="mobile-nav-trigger" type="button" className="grid h-11 w-11 place-items-center rounded-xl bg-white/10 text-white transition hover:bg-white/15" onClick={()=>setMobileOpen(true)} aria-label="باز کردن منوی اصلی" aria-expanded={mobileOpen} aria-controls="cafino-primary-navigation"><Menu size={22} aria-hidden="true"/></button>
+  </header>
+  {mobileOpen&&<button type="button" className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px] lg:hidden" onClick={()=>setMobileOpen(false)} aria-label="بستن منوی اصلی"/>}
+  <aside id="cafino-primary-navigation" className={`fixed inset-y-0 right-0 z-50 flex h-[100dvh] w-[min(20rem,88vw)] flex-col bg-[#211711] p-4 text-white shadow-2xl transition-transform duration-200 ease-out ${mobileOpen?"translate-x-0":"translate-x-full"} lg:sticky lg:top-0 lg:z-20 lg:h-screen lg:w-64 lg:flex-none lg:translate-x-0 lg:shadow-none`}>
+   <div className="mb-4 flex items-center justify-between gap-3 lg:mb-6"><div className="min-w-0"><div className="text-2xl font-black">کافینو</div><div className="mt-1 text-xs text-white/45 lg:hidden">منوی اصلی</div></div><button type="button" className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-white/10 transition hover:bg-white/15 lg:hidden" onClick={()=>setMobileOpen(false)} aria-label="بستن منوی اصلی"><X size={20} aria-hidden="true"/></button></div>
+   <nav className="sidebar-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pb-3" aria-label="منوی اصلی">{sections.map(section=>{const rows=visible.filter(([href])=>section.hrefs.includes(href));if(!rows.length)return null;const expanded=Boolean(openSections[section.id]);return <section key={section.id} aria-label={section.title}><button type="button" className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-right text-xs font-bold tracking-wide text-white/55 transition-colors hover:bg-white/5 hover:text-white" onClick={()=>setOpenSections(current=>({...current,[section.id]:!current[section.id]}))} aria-expanded={expanded} aria-controls={`sidebar-${section.id}`}><span>{section.title}</span><ChevronDown size={16} className={`transition-transform ${expanded?"rotate-180":""}`} aria-hidden="true"/></button>{expanded&&<div id={`sidebar-${section.id}`} className="mt-1 space-y-1">{rows.map(([href,label,Icon])=>{const active=href==="/"?pathname==="/":pathname===href||pathname.startsWith(`${href}/`);return <Link key={href} href={href} aria-current={active?"page":undefined} className={`flex min-h-11 items-center gap-3 rounded-xl border-r-4 px-3 py-2.5 transition-colors ${active?"border-[#e5ad62] bg-[#b9792d] font-bold text-white shadow-[0_6px_18px_rgba(185,121,45,.28)]":"border-transparent text-white/80 hover:bg-white/10 hover:text-white"}`}><Icon size={18} strokeWidth={active?2.5:2} className="flex-none"/><span className="min-w-0 break-words">{localizeLegacyText(label)}</span></Link>})}</div>}</section>})}</nav>
+   <button className="mt-3 flex min-h-11 flex-none items-center gap-2 border-t border-white/10 pt-4 text-white/70 transition-colors hover:text-white" onClick={()=>{clearToken();location.href="/login"}}><LogOut size={18}/>{t("nav.logout","خروج")}</button>
+  </aside>
+ </>;
 }

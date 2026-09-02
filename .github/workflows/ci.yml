@@ -105,3 +105,4 @@ jobs:
       - run: node scripts/release-contract.js
       - run: node scripts/railway-contract.js
       - run: node scripts/pos-contract.js
+      - run: node scripts/responsive-contract.js
