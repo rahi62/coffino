@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./mobile.css";
 import Sidebar from "@/components/sidebar";
 import AuthGuard from "@/components/auth-guard";
 import localFont from "next/font/local";
@@ -18,9 +19,9 @@ export default function RootLayout({children}:{children:React.ReactNode}){
     <html lang="fa" dir="rtl" className={vazirMatn.className}>
       <body>
         <AuthGuard>
-          <div className="flex min-h-screen">
+          <div className="flex min-h-screen min-w-0">
             <Sidebar />
-            <main className="min-w-0 flex-1 p-3 pt-16 sm:p-6 lg:pt-6">{children}</main>
+            <main className="w-full min-w-0 flex-1 overflow-x-hidden p-3 pt-[4.5rem] sm:p-5 sm:pt-[4.75rem] lg:p-6">{children}</main>
           </div>
         </AuthGuard>
       </body>

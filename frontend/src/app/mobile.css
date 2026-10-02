@@ -1,0 +1,28 @@
+@media (max-width: 640px) {
+  .card {
+    border-radius: 15px;
+  }
+
+  .btn {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  h1 {
+    font-size: 1.65rem !important;
+    line-height: 2.15rem !important;
+  }
+
+  table {
+    font-size: 0.8125rem;
+  }
+
+  [class*="grid-cols-["] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .grid > *,
+  .flex > * {
+    min-width: 0;
+  }
+}
