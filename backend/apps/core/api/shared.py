@@ -15,7 +15,7 @@ from apps.dining.models import Hall, Table, TableSession
 from apps.orders.models import Order, ApprovalRequest
 from apps.payments.models import Payment, Refund
 from apps.kitchen.models import PreparationStation, KitchenTicket
-from apps.inventory.models import InventoryItem, StockMovement, RecipeItem
+from apps.inventory.models import IngredientCategory, InventoryItem, StockMovement, RecipeItem
 from apps.takeaway.models import PagerDevice, TakeawayProfile
 from apps.cashier.models import CashRegister, CashShift, CashMovement, DailyClosing
 from apps.cashier.services import close_shift, close_business_day
@@ -102,6 +102,7 @@ class BaseVS(viewsets.ModelViewSet):
         'orders.order':('branch','branch__business'),
         'kitchen.preparationstation':('branch','branch__business'),
         'kitchen.kitchenticket':('order__branch','order__branch__business'),
+        'inventory.ingredientcategory':('branch','branch__business'),
         'inventory.inventoryitem':('branch','branch__business'),
         'inventory.stockmovement':('item__branch','item__branch__business'),
         'inventory.recipeitem':('product__branch','product__branch__business'),

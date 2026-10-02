@@ -293,7 +293,10 @@ class PostgreSQLCheckoutConcurrencyTests(TransactionTestCase):
             )
             return order.order_number
         finally:
-            close_old_connections()
+            # ThreadPool workers own their Django DB connections. Close the thread-local
+            # connection explicitly; close_old_connections() keeps healthy connections open
+            # and PostgreSQL then refuses to drop the test database during teardown.
+            connection.close()
 
     def test_parallel_order_numbers_are_unique_on_postgresql(self):
         if connection.vendor!='postgresql':

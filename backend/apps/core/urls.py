@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from apps.core.views import *
+from apps.core.api.kitchen_actions import kitchen_ticket_done
+from apps.core.api.local_bootstrap import local_bootstrap
 from apps.dashboard.views import dashboard
 
 r=DefaultRouter()
@@ -9,6 +11,7 @@ r.register("categories",CategoryVS);r.register("products",ProductVS);r.register(
 r.register("halls",HallVS);r.register("tables",TableVS);r.register("table-sessions",TableSessionVS)
 r.register("orders",OrderVS);r.register("payments",PaymentVS);r.register("refunds",RefundVS)
 r.register("stations",StationVS);r.register("kitchen-tickets",KitchenTicketVS)
+r.register("ingredient-categories",IngredientCategoryVS,basename="ingredient-category")
 r.register("inventory-items",InventoryItemVS);r.register("stock-movements",StockMovementVS);r.register("recipe-items",RecipeItemVS)
 r.register("pagers",PagerVS);r.register("takeaway-profiles",TakeawayProfileVS)
 r.register("cash-registers",CashRegisterVS);r.register("cash-shifts",CashShiftVS);r.register("cash-movements",CashMovementVS)
@@ -52,17 +55,22 @@ r.register("push-provider",PushProviderConfigVS,basename="push-provider")
 
 
 urlpatterns=[
-    path("health/",health),path("me/",me),path("dashboard/",dashboard),path("checkout/",checkout),
+    path("health/",health),path("local/bootstrap/",local_bootstrap),path("me/",me),path("dashboard/",dashboard),path("checkout/",checkout),
     path("purchases/create/",create_multi_purchase),path("reports/financial/",financial_report),
     path("approvals/request/",request_approval),path("daily-close/",daily_close),
     path("reports/sales/",sales_reports),path("reports/food-cost/",food_cost),path("reports/kpi/",kpi_report),
-    path("settings/context/",settings_context),path("settings/users/create/",settings_user_create),path("settings/users/<int:user_id>/password/",settings_user_password),path("permissions/me/",permissions_me),path("permissions/matrix/",permission_matrix),
+    path("settings/context/",settings_context),path("settings/readiness/",settings_readiness),
+    path("settings/onboarding/presets/",settings_onboarding_presets),path("settings/onboarding/apply/",settings_onboarding_apply),
+    path("settings/health/",settings_health),path("settings/health/printer/",settings_printer_health),
+    path("settings/deployment-profiles/",settings_deployment_profiles),path("settings/go-live/",settings_go_live),
+    path("settings/users/create/",settings_user_create),path("settings/users/<int:user_id>/password/",settings_user_password),path("permissions/me/",permissions_me),path("permissions/matrix/",permission_matrix),
     path("manager-pin/set/",manager_pin_set),path("manager-override/",manager_override),
     path("attendance/clock-in/",attendance_clock_in),path("attendance/clock-out/",attendance_clock_out),
     path("waste/create/",waste_create),path("dashboard/branches/",branches_dashboard),
     path("inventory-counts/create/",inventory_count_create),path("stock-transfers/create/",stock_transfer_create),
     path("orders/<int:pk>/settle/",order_settle),path("checkout/preview/",checkout_preview),
     path("orders/<int:pk>/receipt-job/",receipt_job_create),path("orders/<int:pk>/receipt-payload/",receipt_payload),
+    path("kitchen-tickets/<int:pk>/done/",kitchen_ticket_done),
     path("kitchen-tickets/<int:pk>/print-payload/",kitchen_print_payload),path("kitchen-tickets/<int:pk>/print-job/",kitchen_job_create),
     path("orders/<int:pk>/bill-splits/",bill_split_create),path("customers/<int:customer_id>/loyalty/redeem/",loyalty_redeem),path("customers/<int:customer_id>/wallet/credit/",wallet_credit),
     path("notifications/process/",process_notifications_api),path("online/settings/ensure/",online_settings_ensure),path("tables/<int:pk>/qr/ensure/",table_qr_ensure),path("tables/<int:pk>/qr.svg",table_qr_svg),

@@ -1,11 +1,10 @@
 import json
-import urllib.error
-import urllib.request
 from datetime import timedelta
 
 from django.db import models, transaction
 from django.utils import timezone
 
+from apps.core.network_safety import post_json, validate_http_target
 from .models import Notification, PagerProviderConfig, SmsProviderConfig
 
 
@@ -91,14 +90,19 @@ def enqueue_order_ready(order):
     return created
 
 
-def _request_json(*, endpoint, payload, headers, timeout):
-    request=urllib.request.Request(
-        endpoint,data=json.dumps(payload,ensure_ascii=False).encode('utf-8'),headers=headers,method='POST',
+def _request_json(*, endpoint, payload, headers, timeout, allow_private=False, require_https=False):
+    # SMS/pager success is defined by a 2xx response. Some providers return
+    # plain text rather than JSON, so transport validation is strict while the
+    # response body is intentionally ignored.
+    return post_json(
+        endpoint,
+        payload,
+        headers=headers,
+        timeout=timeout,
+        allow_private=allow_private,
+        require_https=require_https,
+        parse_response=False,
     )
-    with urllib.request.urlopen(request,timeout=timeout) as response:
-        code=getattr(response,'status',200)
-        if code<200 or code>=300:
-            raise ValueError(f'پاسخ نامعتبر سرویس اعلان: {code}')
 
 
 def _provider_headers(config):
@@ -106,6 +110,11 @@ def _provider_headers(config):
     for key,value in (config.headers or {}).items():
         headers[str(key)]=str(value).replace('{api_key}',config.api_key)
     return headers
+
+
+def _provider_network_policy(branch):
+    local = branch.business.deployment_type == 'LOCAL'
+    return {'allow_private': local, 'require_https': not local}
 
 
 def _send_sms(notification):
@@ -118,7 +127,13 @@ def _send_sms(notification):
     payload={config.phone_field:notification.recipient,config.message_field:notification.body}
     if config.sender:
         payload[config.sender_field]=config.sender
-    _request_json(endpoint=config.endpoint_url,payload=payload,headers=_provider_headers(config),timeout=config.timeout_seconds)
+    _request_json(
+        endpoint=config.endpoint_url,
+        payload=payload,
+        headers=_provider_headers(config),
+        timeout=config.timeout_seconds,
+        **_provider_network_policy(notification.branch),
+    )
 
 
 def _send_pager(notification):
@@ -132,6 +147,7 @@ def _send_pager(notification):
         endpoint=config.endpoint_url,
         payload={config.pager_field:notification.recipient,config.message_field:notification.body},
         headers=_provider_headers(config),timeout=config.timeout_seconds,
+        **_provider_network_policy(notification.branch),
     )
 
 
@@ -147,6 +163,9 @@ def _send_push(notification):
         raise ValueError('اتصال‌دهندهٔ اعلان مرورگر تنظیم نشده است.')
     if not config.is_active or not config.vapid_public_key or not config.get_private_key():
         raise ValueError('اتصال‌دهندهٔ اعلان مرورگر فعال نیست.')
+    # Browser push endpoints are always external HTTPS services. Never let a public
+    # subscription turn the worker into an internal-network request primitive.
+    validate_http_target(subscription.endpoint, allow_private=False, require_https=True)
     try:
         from pywebpush import webpush
     except ImportError:
@@ -163,7 +182,9 @@ def _send_push(notification):
 
 @transaction.atomic
 def process_notification(notification):
-    n=Notification.objects.select_for_update().select_related('branch','order').get(pk=notification.pk)
+    # Lock only Notification itself. `order` is nullable and PostgreSQL rejects FOR UPDATE
+    # on a nullable outer-joined relation.
+    n=Notification.objects.select_for_update(of=('self',)).select_related('branch__business','order').get(pk=notification.pk)
     if n.status in [Notification.Status.SENT,Notification.Status.CANCELLED]:
         return n
     n.status=Notification.Status.PROCESSING

@@ -1,0 +1,58 @@
+"""Additional admin labels for models/fields introduced after the baseline localization map."""
+
+from .admin_localization import FIELD_LABELS, MODEL_LABELS
+
+
+MODEL_LABELS.update({
+    'accounting.BankAccount': ('حساب بانکی', 'حساب‌های بانکی'),
+    'inventory.IngredientCategory': ('دسته ماده اولیه', 'دسته‌های مواد اولیه'),
+    'operations.DeviceInstallation': ('نصب دستگاه', 'نصب‌های دستگاه'),
+    'operations.ReleasePolicy': ('سیاست انتشار', 'سیاست‌های انتشار'),
+    'operations.DeviceEvent': ('رویداد دستگاه', 'رویدادهای دستگاه'),
+    'operations.DiagnosticRequest': ('درخواست عیب‌یابی', 'درخواست‌های عیب‌یابی'),
+})
+
+FIELD_LABELS.update({
+    'bank_account': 'حساب بانکی',
+    'bank_name': 'نام بانک',
+    'holder_name': 'نام صاحب حساب',
+    'identifier_last4': 'چهار نویسه پایانی شناسه',
+    'layout': 'چیدمان',
+    'material_category': 'دسته ماده اولیه',
+    'pager_field': 'فیلد شناسه پیجر',
+    'ready_notification_method': 'روش اعلان آماده‌شدن سفارش',
+    'advisory_message': 'پیام راهنما',
+    'app_health': 'سلامت برنامه',
+    'app_version': 'نسخه برنامه',
+    'arch': 'معماری',
+    'blocked_versions': 'نسخه‌های مسدود',
+    'completed_at': 'زمان تکمیل',
+    'component': 'مولفه',
+    'current_version': 'نسخه فعلی',
+    'customer_label': 'عنوان مشتری',
+    'event_type': 'نوع رویداد',
+    'fingerprint': 'اثر انگشت',
+    'installation': 'نصب',
+    'installation_id': 'شناسه نصب',
+    'last_backup_at': 'زمان آخرین پشتیبان',
+    'last_backup_ok': 'سلامت آخرین پشتیبان',
+    'last_crash_at': 'زمان آخرین خرابی',
+    'last_seen_at': 'آخرین مشاهده',
+    'last_update_status': 'وضعیت آخرین به‌روزرسانی',
+    'license_id': 'شناسه مجوز',
+    'machine_hash': 'هش دستگاه',
+    'minimum_version': 'حداقل نسخه',
+    'paused': 'متوقف‌شده',
+    'platform': 'سکو',
+    'release_channel': 'کانال انتشار',
+    'request_id': 'شناسه درخواست',
+    'requested_by_label': 'درخواست‌کننده',
+    'required_after': 'الزام پس از',
+    'rollback_version': 'نسخه بازگشت',
+    'rollout_percent': 'درصد انتشار',
+    'severity': 'شدت',
+    'snapshot': 'نمای وضعیت',
+    'target_version': 'نسخه هدف',
+    'telemetry_enabled': 'تله‌متری فعال',
+    'token_hash': 'هش توکن',
+})

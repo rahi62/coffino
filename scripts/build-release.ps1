@@ -1,8 +1,51 @@
+param(
+  [switch]$Production,
+  [switch]$AllowUnsigned,
+  [ValidateSet("stable","beta")][string]$Channel="stable"
+)
+
 $ErrorActionPreference="Stop"
 $root=Split-Path -Parent $PSScriptRoot
 $backend="$root\backend";$frontend="$root\frontend";$electron="$root\electron"
+
+function Require-Env([string]$Name) {
+  $value=[Environment]::GetEnvironmentVariable($Name)
+  if ([string]::IsNullOrWhiteSpace($value)) { throw "$Name is required." }
+  return $value
+}
+function Env-Or([string]$Name,$Fallback) {
+  $value=[Environment]::GetEnvironmentVariable($Name)
+  if ([string]::IsNullOrWhiteSpace($value)) { return $Fallback }
+  return $value
+}
+function Write-Utf8NoBom([string]$Path,[string]$Text) {
+  $encoding=New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path,$Text,$encoding)
+}
+
 if (!(Test-Path "$backend\.venv")) { throw "Run scripts/setup-local.ps1 first." }
+
+$updateUrl=""
+$licensePublicKeyPath=""
+$opsEndpoint=(Env-Or "CAF_INO_OPS_ENDPOINT" "").TrimEnd('/')
+if ($opsEndpoint -and $opsEndpoint -notmatch '^https://') { throw "CAF_INO_OPS_ENDPOINT must use HTTPS." }
+$telemetryEnabled=(Env-Or "CAF_INO_TELEMETRY_ENABLED" "0") -eq "1"
+$heartbeatIntervalMinutes=[int](Env-Or "CAF_INO_OPS_HEARTBEAT_MINUTES" 60)
+if ($heartbeatIntervalMinutes -lt 15) { throw "CAF_INO_OPS_HEARTBEAT_MINUTES must be at least 15." }
+
+if ($Production) {
+  $updateUrl=Require-Env "CAF_INO_UPDATE_URL"
+  if ($updateUrl -notmatch '^https://') { throw "CAF_INO_UPDATE_URL must use HTTPS." }
+  $licensePublicKeyPath=Require-Env "CAF_INO_LICENSE_PUBLIC_KEY_PATH"
+  if (!(Test-Path $licensePublicKeyPath)) { throw "CAF_INO_LICENSE_PUBLIC_KEY_PATH does not exist: $licensePublicKeyPath" }
+  if (!$AllowUnsigned) {
+    [void](Require-Env "CSC_LINK")
+    [void](Require-Env "CSC_KEY_PASSWORD")
+  }
+}
+
 & "$backend\.venv\Scripts\python.exe" "$root\scripts\release-check.py"
+node "$root\scripts\release-contract.js"
 Set-Location $backend
 & ".\.venv\Scripts\python.exe" manage.py makemigrations --check --dry-run
 & ".\.venv\Scripts\python.exe" manage.py migrate
@@ -25,7 +68,54 @@ New-Item "$electron\release-resources\frontend\.next\static" -ItemType Directory
 Copy-Item ".next\static\*" "$electron\release-resources\frontend\.next\static" -Recurse -Force
 if (Test-Path "public") { Copy-Item "public" "$electron\release-resources\frontend\public" -Recurse -Force }
 
+New-Item "$electron\release-resources\config" -ItemType Directory -Force | Out-Null
+$config=[ordered]@{
+  updateUrl=$updateUrl
+  releaseChannel=$Channel
+  enforceLicense=[bool]$Production
+  licensePublicKey=if($Production){"config/license-public-key.pem"}else{""}
+  backupIntervalHours=[int](Env-Or "CAF_INO_BACKUP_INTERVAL_HOURS" 24)
+  backupRetentionCount=[int](Env-Or "CAF_INO_BACKUP_RETENTION_COUNT" 14)
+  backupMaxAgeDays=[int](Env-Or "CAF_INO_BACKUP_MAX_AGE_DAYS" 60)
+  opsEndpoint=$opsEndpoint
+  operationsEnabled=[bool]$opsEndpoint
+  telemetryEnabled=[bool]$telemetryEnabled
+  heartbeatIntervalMinutes=$heartbeatIntervalMinutes
+}
+Write-Utf8NoBom "$electron\release-resources\config\release-config.json" ($config|ConvertTo-Json -Depth 4)
+if ($Production) { Copy-Item $licensePublicKeyPath "$electron\release-resources\config\license-public-key.pem" -Force }
+
 Set-Location $electron
+$env:CAF_INO_PRODUCTION_BUILD=if($Production){"1"}else{"0"}
+$env:CAF_INO_ALLOW_UNSIGNED=if($AllowUnsigned){"1"}else{"0"}
+$env:CAF_INO_UPDATE_URL=$updateUrl
 npm install
+npm run test:release
 npm run build
+
+$releaseDir="$electron\release"
+$version=(Get-Content "$electron\package.json" -Raw | ConvertFrom-Json).version
+$manifest=[ordered]@{
+  schema=3
+  created_at=(Get-Date).ToUniversalTime().ToString("o")
+  version=$version
+  channel=$Channel
+  production=[bool]$Production
+  unsigned=[bool]$AllowUnsigned
+  update_url=$updateUrl
+  operations_enabled=[bool]$opsEndpoint
+  telemetry_enabled=[bool]$telemetryEnabled
+  artifacts=@()
+}
+Get-ChildItem $releaseDir -File | Where-Object { $_.Extension -in '.exe','.yml','.blockmap' } | ForEach-Object {
+  $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  $manifest.artifacts+=@{name=$_.Name;size=$_.Length;sha256=$hash}
+}
+Write-Utf8NoBom "$releaseDir\release-manifest.json" ($manifest|ConvertTo-Json -Depth 6)
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\prepare-update-feed.ps1" -ReleaseDir $releaseDir -Channel $Channel
+
 Write-Host "Release created under electron\release" -ForegroundColor Green
+Write-Host "Update feed prepared under electron\release\publish\$Channel" -ForegroundColor Green
+if($opsEndpoint){Write-Host "Production Operations endpoint embedded (telemetry=$telemetryEnabled)." -ForegroundColor Green}
+if($Production -and !$AllowUnsigned){Write-Host "Production signing gate was required." -ForegroundColor Green}

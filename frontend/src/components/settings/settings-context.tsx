@@ -13,13 +13,30 @@ export type SettingsContextData={
   current_branch:number|null;
   role:string;
 };
+export type SetupCheck={
+  key:string;
+  title:string;
+  status:"done"|"missing"|"warning";
+  required:boolean;
+  detail:string;
+  href:string;
+};
+export type SetupSummary={score:number;completed:number;total:number;blocking:number};
+export type BranchReadiness=SetupSummary&{branch:number;name:string;checks:SetupCheck[]};
+export type SettingsReadiness={
+  overall:SetupSummary;
+  business:SetupSummary&{checks:SetupCheck[]};
+  branches:BranchReadiness[];
+  active_modules:string[];
+};
 
-type Value={data:SettingsContextData|null;loading:boolean;error:string;selectedBranchId:number|null;selectedBranch:SettingsBranch|null;setSelectedBranchId:(id:number)=>void;refresh:()=>Promise<void>;can:(code:string)=>boolean};
+type Value={data:SettingsContextData|null;readiness:SettingsReadiness|null;loading:boolean;error:string;selectedBranchId:number|null;selectedBranch:SettingsBranch|null;setSelectedBranchId:(id:number)=>void;refresh:()=>Promise<void>;can:(code:string)=>boolean};
 const Ctx=createContext<Value|null>(null);
 const storageKey="cafino_settings_branch";
 
 export function SettingsProvider({children}:{children:React.ReactNode}){
   const [data,setData]=useState<SettingsContextData|null>(null);
+  const [readiness,setReadiness]=useState<SettingsReadiness|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [selectedBranchId,setSelectedBranchState]=useState<number|null>(null);
@@ -27,8 +44,11 @@ export function SettingsProvider({children}:{children:React.ReactNode}){
   const refresh=async()=>{
     setLoading(true);setError("");
     try{
-      const x=await api<SettingsContextData>("/settings/context/");
-      setData(x);
+      const [x,r]=await Promise.all([
+        api<SettingsContextData>("/settings/context/"),
+        api<SettingsReadiness>("/settings/readiness/"),
+      ]);
+      setData(x);setReadiness(r);
       const stored=typeof window!=="undefined"?Number(localStorage.getItem(storageKey)||0):0;
       const candidate=x.branches.some(b=>b.id===stored)?stored:(x.current_branch&&x.branches.some(b=>b.id===x.current_branch)?x.current_branch:x.branches[0]?.id||null);
       setSelectedBranchState(candidate||null);
@@ -39,7 +59,7 @@ export function SettingsProvider({children}:{children:React.ReactNode}){
   useEffect(()=>{refresh()},[]);
   const setSelectedBranchId=(id:number)=>{setSelectedBranchState(id);if(typeof window!=="undefined")localStorage.setItem(storageKey,String(id))};
   const selectedBranch=useMemo(()=>data?.branches.find(b=>b.id===selectedBranchId)||null,[data,selectedBranchId]);
-  const value:Value={data,loading,error,selectedBranchId,selectedBranch,setSelectedBranchId,refresh,can:(code)=>!!data?.permissions?.[code]};
+  const value:Value={data,readiness,loading,error,selectedBranchId,selectedBranch,setSelectedBranchId,refresh,can:(code)=>!!data?.permissions?.[code]};
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

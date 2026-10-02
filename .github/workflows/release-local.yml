@@ -1,0 +1,144 @@
+name: Cafino Local Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer release version, e.g. 1.2.0 or 1.2.0-beta.1"
+        required: true
+        type: string
+      channel:
+        description: "Update channel"
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
+      publish_update_feed:
+        description: "Publish verified update feed to configured S3-compatible storage"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-signed-installer:
+    runs-on: windows-latest
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      CAF_INO_OPS_ENDPOINT: ${{ secrets.CAF_INO_OPS_ENDPOINT }}
+      CAF_INO_TELEMETRY_ENABLED: ${{ vars.CAF_INO_TELEMETRY_ENABLED || '0' }}
+      CAF_INO_OPS_HEARTBEAT_MINUTES: ${{ vars.CAF_INO_OPS_HEARTBEAT_MINUTES || '60' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate version and channel
+        shell: pwsh
+        run: |
+          if ("${{ inputs.version }}" -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') { throw "Invalid SemVer version" }
+          if ("${{ inputs.channel }}" -notin @("stable","beta")) { throw "Invalid channel" }
+          if ("${{ inputs.channel }}" -eq "stable" -and "${{ inputs.version }}" -match '-') { throw "Stable channel requires a non-prerelease SemVer." }
+          if (-not [string]::IsNullOrWhiteSpace($env:CAF_INO_OPS_ENDPOINT) -and $env:CAF_INO_OPS_ENDPOINT -notmatch '^https://') { throw "CAF_INO_OPS_ENDPOINT must use HTTPS" }
+          if ($env:CAF_INO_TELEMETRY_ENABLED -notin @("0","1")) { throw "CAF_INO_TELEMETRY_ENABLED must be 0 or 1" }
+          if ([int]$env:CAF_INO_OPS_HEARTBEAT_MINUTES -lt 15) { throw "CAF_INO_OPS_HEARTBEAT_MINUTES must be at least 15" }
+
+      - name: Resolve update URL
+        shell: pwsh
+        env:
+          CAF_INO_UPDATE_BASE_URL: ${{ secrets.CAF_INO_UPDATE_BASE_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CAF_INO_UPDATE_BASE_URL)) { throw "CAF_INO_UPDATE_BASE_URL secret is required" }
+          if ($env:CAF_INO_UPDATE_BASE_URL -notmatch '^https://') { throw "CAF_INO_UPDATE_BASE_URL must use HTTPS" }
+          $base=$env:CAF_INO_UPDATE_BASE_URL.TrimEnd('/')
+          "CAF_INO_UPDATE_URL=$base/${{ inputs.channel }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare Python release environment
+        shell: pwsh
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/Scripts/python.exe -m pip install --upgrade pip
+          backend/.venv/Scripts/pip.exe install -r backend/requirements-dev.txt
+
+      - name: Set desktop version
+        working-directory: electron
+        shell: pwsh
+        run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Materialize public license key
+        shell: pwsh
+        env:
+          CAF_INO_LICENSE_PUBLIC_KEY_PEM: ${{ secrets.CAF_INO_LICENSE_PUBLIC_KEY_PEM }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CAF_INO_LICENSE_PUBLIC_KEY_PEM)) { throw "CAF_INO_LICENSE_PUBLIC_KEY_PEM secret is required" }
+          New-Item release-secrets -ItemType Directory -Force | Out-Null
+          $keyPath=(Resolve-Path release-secrets).Path + "\license-public-key.pem"
+          $utf8=New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($keyPath,$env:CAF_INO_LICENSE_PUBLIC_KEY_PEM,$utf8)
+          "CAF_INO_LICENSE_PUBLIC_KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build signed production release
+        shell: powershell
+        run: .\scripts\build-release.ps1 -Production -Channel "${{ inputs.channel }}"
+
+      - name: Verify release manifest
+        shell: pwsh
+        run: |
+          $m=Get-Content electron/release/release-manifest.json -Raw | ConvertFrom-Json
+          if ($m.version -ne "${{ inputs.version }}") { throw "Release version mismatch" }
+          if ($m.channel -ne "${{ inputs.channel }}") { throw "Release channel mismatch" }
+          if (-not $m.production -or $m.unsigned) { throw "Release is not a signed production build" }
+          if ($m.artifacts.Count -lt 3) { throw "Release manifest is incomplete" }
+          $expectOps=-not [string]::IsNullOrWhiteSpace($env:CAF_INO_OPS_ENDPOINT)
+          if ([bool]$m.operations_enabled -ne $expectOps) { throw "Operations manifest state mismatch" }
+          if ([bool]$m.telemetry_enabled -ne ($env:CAF_INO_TELEMETRY_ENABLED -eq '1')) { throw "Telemetry manifest state mismatch" }
+
+      - name: Clean Windows install + full Local runtime smoke
+        shell: powershell
+        run: |
+          $installer=Get-ChildItem electron/release -Filter "Cafino-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Installer not found" }
+          .\scripts\smoke-test-installer.ps1 -Installer $installer.FullName -RequireTrustedSignature -RuntimeSmoke
+
+      - name: Upload verified signed release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: cafino-local-${{ inputs.version }}-${{ inputs.channel }}-verified
+          path: |
+            electron/release/Cafino-Setup-*.exe
+            electron/release/*.yml
+            electron/release/*.blockmap
+            electron/release/release-manifest.json
+            electron/release/publish/${{ inputs.channel }}/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish update feed to S3-compatible storage
+        if: ${{ inputs.publish_update_feed }}
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CAF_INO_UPDATE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CAF_INO_UPDATE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.CAF_INO_UPDATE_REGION }}
+          CAF_INO_UPDATE_BUCKET: ${{ secrets.CAF_INO_UPDATE_BUCKET }}
+          CAF_INO_UPDATE_ENDPOINT: ${{ secrets.CAF_INO_UPDATE_ENDPOINT }}
+        run: |
+          foreach($name in @("AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY","CAF_INO_UPDATE_BUCKET")) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) { throw "$name is required to publish" }
+          }
+          $source="electron/release/publish/${{ inputs.channel }}"
+          $target="s3://$env:CAF_INO_UPDATE_BUCKET/${{ inputs.channel }}/"
+          $args=@("s3","sync",$source,$target,"--delete","--cache-control","public,max-age=300")
+          if (-not [string]::IsNullOrWhiteSpace($env:CAF_INO_UPDATE_ENDPOINT)) { $args+=@("--endpoint-url",$env:CAF_INO_UPDATE_ENDPOINT) }
+          & aws @args
+          if ($LASTEXITCODE -ne 0) { throw "Update feed publish failed" }
+          Write-Host "Published verified ${{ inputs.channel }} feed to $target" -ForegroundColor Green

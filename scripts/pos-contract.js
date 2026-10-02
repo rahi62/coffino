@@ -1,0 +1,15 @@
+const assert=require("assert");
+const fs=require("fs");
+const path=require("path");
+const root=path.resolve(__dirname,"..");
+const adapter=fs.readFileSync(path.join(root,"electron/src/device-adapters.js"),"utf8");
+const api=fs.readFileSync(path.join(root,"frontend/src/lib/api.ts"),"utf8");
+const docs=fs.readFileSync(path.join(root,"docs/POS_TERMINAL_INTEGRATION.md"),"utf8");
+const journalDocs=fs.readFileSync(path.join(root,"docs/POS_APPROVAL_JOURNAL.md"),"utf8");
+for(const token of ["HTTP_BRIDGE","TCP_JSON","EXEC_BRIDGE","CAF_INO_POS_AMOUNT_UNIT","allowedBridgeHost","approvedValue","CAF_INO_POS_JOURNAL_PATH","appendPosApproval","missing_reference","reference_conflict"])assert.ok(adapter.includes(token),`POS adapter contract missing ${token}`);
+for(const token of ["authorizeLocalPos","Idempotency-Key","sendPosAmount","reference_number","pendingPos.length>1"])assert.ok(api.includes(token),`Checkout POS contract missing ${token}`);
+assert.ok(docs.includes("idempotent"),"POS runbook must document vendor idempotency");
+assert.ok(journalDocs.includes("append-only"),"POS approval journal behavior must be documented");
+assert.ok(fs.existsSync(path.join(root,"scripts/mock-pos-bridge.js")),"Mock POS bridge is required for Local acceptance");
+assert.ok(fs.existsSync(path.join(root,"scripts/test-local-installer.ps1")),"Local installer acceptance script is required");
+console.log("Cafino POS integration contract passed");

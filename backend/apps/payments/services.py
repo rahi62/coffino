@@ -115,7 +115,9 @@ def create_item_splits(order,groups):
 
 @transaction.atomic
 def settle_bill_split(split,*,payments,user=None):
-    split=BillSplit.objects.select_for_update().select_related('order__customer').get(pk=split.pk);order=Order.objects.select_for_update().get(pk=split.order_id)
+    # Lock BillSplit itself only. `order__customer` is nullable and PostgreSQL rejects
+    # FOR UPDATE on the nullable side of that outer join. The Order row is locked separately.
+    split=BillSplit.objects.select_for_update(of=('self',)).select_related('order__customer').get(pk=split.pk);order=Order.objects.select_for_update().get(pk=split.order_id)
     existing=Decimal(split.payments.filter(status__in=[Payment.Status.SUCCEEDED,Payment.Status.PARTIALLY_REFUNDED,Payment.Status.REFUNDED]).aggregate(v=Sum('amount'))['v'] or 0)
     remaining=max(Decimal('0'),Decimal(split.total)-existing);rows=[];new_total=Decimal('0')
     for row in payments or []:

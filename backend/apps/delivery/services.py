@@ -21,7 +21,7 @@ def create_delivery_assignment(*,order,address,fee):
 
 @transaction.atomic
 def assign_courier(assignment,courier,*,user=None):
-    x=DeliveryAssignment.objects.select_for_update().select_related('order__branch').get(pk=assignment.pk)
+    x=DeliveryAssignment.objects.select_for_update(of=('self',)).select_related('order__branch').get(pk=assignment.pk)
     c=CourierProfile.objects.select_for_update().get(pk=courier.pk)
     if c.branch_id!=x.order.branch_id or not c.is_active:raise ValueError('پیک معتبر نیست')
     if x.order.status==x.order.Status.DRAFT:raise ValueError('سفارش هنوز در انتظار پرداخت/تأیید است')
@@ -33,7 +33,9 @@ def assign_courier(assignment,courier,*,user=None):
 
 @transaction.atomic
 def update_delivery_status(assignment,status,*,user=None,note=''):
-    x=DeliveryAssignment.objects.select_for_update().select_related('order__branch','courier').get(pk=assignment.pk)
+    # Lock only the assignment row. `courier` is nullable, so locking an outer-joined
+    # related row is rejected by PostgreSQL (FOR UPDATE on nullable side of outer join).
+    x=DeliveryAssignment.objects.select_for_update(of=('self',)).select_related('order__branch','courier').get(pk=assignment.pk)
     allowed={
       DeliveryAssignment.Status.ASSIGNED:{DeliveryAssignment.Status.PICKED_UP,DeliveryAssignment.Status.CANCELLED},
       DeliveryAssignment.Status.PICKED_UP:{DeliveryAssignment.Status.DELIVERED,DeliveryAssignment.Status.FAILED},

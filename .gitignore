@@ -9,3 +9,10 @@ __pycache__/
 *.sqlite3
 celerybeat-schedule*
 backend/.venv/
+backend/staticfiles/
+electron/release/
+electron/release-resources/
+release-secrets/
+*.p12
+*.pfx
+*.pem.key
