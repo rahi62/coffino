@@ -1,0 +1,19 @@
+[Unit]
+Description=Cafino Celery Beat
+After=network-online.target postgresql.service redis-server.service cafino-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=www-data
+WorkingDirectory=__ROOT__/backend
+EnvironmentFile=/etc/cafino/backend.env
+ExecStart=__ROOT__/backend/.venv/bin/celery -A config beat --loglevel=INFO
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

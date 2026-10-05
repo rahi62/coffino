@@ -1,0 +1,19 @@
+[Unit]
+Description=Cafino Django Backend
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=www-data
+WorkingDirectory=__ROOT__/backend
+EnvironmentFile=/etc/cafino/backend.env
+ExecStart=__ROOT__/backend/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:9860 --workers 3 --timeout 60 --access-logfile - --error-logfile -
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

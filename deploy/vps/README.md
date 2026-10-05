@@ -1,56 +1,49 @@
-# Cafino VPS deployment
+# Cafino native VPS deployment
 
-This deployment runs the full Cafino stack with Docker Compose and exposes it through one public domain.
+Cafino production on this VPS is intentionally **container-free**.
 
-Routing:
+## Runtime
 
-- `https://DOMAIN/` -> Next.js frontend
-- `https://DOMAIN/api/*` -> Django API
-- `https://DOMAIN/admin/*` -> Django admin
-- `https://DOMAIN/static/*` -> Django/WhiteNoise
+- Next.js: `cafino-frontend.service` on `127.0.0.1:9861`
+- Django/Gunicorn: `cafino-backend.service` on `127.0.0.1:9860`
+- Celery Worker: `cafino-worker.service`
+- Celery Beat: `cafino-beat.service`
+- PostgreSQL: host service
+- Redis: host service
+- Nginx: public reverse proxy
+- Public hostname: `cafeno.digitalafarin.ir`
 
-Default localhost-only ports are `9861` for frontend and `9860` for backend to avoid colliding with existing services on the VPS.
+No Docker or Docker Compose is required.
 
-## DNS
+## First install
 
-Point the selected domain's A/AAAA record to the VPS before requesting Let's Encrypt.
-
-## Deploy
-
-From the repository root on the VPS:
-
-```bash
-chmod +x deploy/vps/deploy.sh
-./deploy/vps/deploy.sh cafino.example.com you@example.com
-```
-
-The first run creates `deploy/vps/.env.vps` with random database and Django secrets. The file is intentionally not committed.
-
-To bootstrap the first owner on a fresh database, edit that file and set:
-
-```dotenv
-CAF_INO_BUSINESS_NAME=Cafino
-CAF_INO_BRANCH_NAME=Main
-CAF_INO_OWNER_USERNAME=your-user
-CAF_INO_OWNER_EMAIL=you@example.com
-CAF_INO_BOOTSTRAP_OWNER_PASSWORD=a-strong-password
-```
-
-Then run the deploy script again. The bootstrap command is idempotent for the matching owner/business.
-
-## Update
+Create the backend environment file first:
 
 ```bash
-git pull --ff-only origin main
-./deploy/vps/deploy.sh YOUR_DOMAIN YOUR_EMAIL
+sudo install -d -m 0750 /etc/cafino
+sudo cp deploy/vps/backend.env.example /etc/cafino/backend.env
+sudo nano /etc/cafino/backend.env
+sudo chmod 0640 /etc/cafino/backend.env
 ```
 
-## Verify
+The existing production PostgreSQL database should be referenced by `DATABASE_URL`; do not create a replacement database during a migration of an existing live deployment.
+
+Then:
 
 ```bash
-curl -fsS https://YOUR_DOMAIN/api/v1/health/
-curl -I https://YOUR_DOMAIN/login
-docker compose --env-file deploy/vps/.env.vps -f deploy/vps/compose.prod.yml ps
+chmod +x deploy/vps/install-native.sh deploy/vps/update.sh
+./deploy/vps/install-native.sh
 ```
 
-Do not expose ports 9860/9861 publicly; Nginx is the public entry point.
+## Routine update
+
+```bash
+cd /path/to/coffino
+./deploy/vps/update.sh
+```
+
+The update performs a fast-forward pull, Python dependency install, migrations, collectstatic, `npm ci`, Next.js build, controlled service restarts, and local health verification.
+
+## DigitalAfarin Platform
+
+The four `cafino-*.service` units are intentionally ordinary systemd services so they can be discovered/adopted by DigitalAfarin Platform without introducing a container runtime.
