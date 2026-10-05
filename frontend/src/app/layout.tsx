@@ -19,9 +19,9 @@ export default function RootLayout({children}:{children:React.ReactNode}){
     <html lang="fa" dir="rtl" className={vazirMatn.className}>
       <body>
         <AuthGuard>
-          <div className="flex min-h-screen w-full">
+          <div className="flex min-h-screen w-full min-w-0">
             <Sidebar />
-            <main className="min-w-0 w-full flex-1 overflow-x-hidden p-3 pb-6 pt-20 sm:p-6 sm:pt-20 lg:pt-6">{children}</main>
+            <main className="min-w-0 w-full flex-1 p-3 pb-6 pt-[4.5rem] md:p-5 xl:p-6">{children}</main>
           </div>
         </AuthGuard>
       </body>
