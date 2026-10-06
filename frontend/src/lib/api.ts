@@ -62,7 +62,7 @@ async function authorizeLocalPos(path:string,init?:RequestInit):Promise<RequestI
 export async function api<T>(path:string, init?:RequestInit):Promise<T>{
  const prepared=await authorizeLocalPos(path,init);
  const token=getToken();let r:Response;try{r=await fetch(`${base}${path}`,{...prepared,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`} :{}),...(prepared?.headers||{})},cache:"no-store"});}catch(error){if(error instanceof Error&&error.message&&!error.message.includes("fetch"))throw error;throw new Error(t("error.network"));}
- if(r.status===401){if(typeof window!=="undefined" && !location.pathname.startsWith("/login"))location.href="/login";throw new Error(t("error.unauthorized"))}
+ if(r.status===401){clearToken();if(typeof window!=="undefined" && !location.pathname.startsWith("/login"))location.replace("/login");throw new Error(t("error.unauthorized"))}
  if(!r.ok)throw new Error(userMessage(await r.text(),r.status));
  if(r.status===204)return undefined as T;
  const body=await r.text();
