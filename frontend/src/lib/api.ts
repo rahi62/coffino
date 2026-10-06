@@ -1,12 +1,12 @@
 import { t, userMessage } from "@/lib/i18n";
 
-const base=process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+const base=process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 const tokenKey="cafino_access";
 export function getToken(){if(typeof window==="undefined")return null;return localStorage.getItem(tokenKey)}
 export function setToken(t:string){localStorage.setItem(tokenKey,t)}
 export function clearToken(){localStorage.removeItem(tokenKey)}
 export async function login(username:string,password:string){
- let r:Response;try{r=await fetch((process.env.NEXT_PUBLIC_API_ROOT||"http://127.0.0.1:8000")+"/api/token/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});}catch{throw new Error(t("error.network"));}if(!r.ok)throw new Error("نام کاربری یا رمز عبور نادرست است.");const d=await r.json();setToken(d.access);return d;
+ let r:Response;try{r=await fetch((process.env.NEXT_PUBLIC_API_ROOT||"")+"/api/token/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});}catch{throw new Error(t("error.network"));}if(!r.ok)throw new Error("نام کاربری یا رمز عبور نادرست است.");const d=await r.json();setToken(d.access);return d;
 }
 
 export type LocalBootstrapStatus={available:boolean;needs_setup:boolean};
