@@ -4,6 +4,7 @@ from .admin_localization import FIELD_LABELS, MODEL_LABELS
 
 
 MODEL_LABELS.update({
+    'accounts.OtpChallenge': ('چالش رمز یک‌بارمصرف', 'چالش‌های رمز یک‌بارمصرف'),
     'accounting.BankAccount': ('حساب بانکی', 'حساب‌های بانکی'),
     'inventory.IngredientCategory': ('دسته ماده اولیه', 'دسته‌های مواد اولیه'),
     'operations.DeviceInstallation': ('نصب دستگاه', 'نصب‌های دستگاه'),
@@ -13,6 +14,21 @@ MODEL_LABELS.update({
 })
 
 FIELD_LABELS.update({
+    'mobile': 'شماره همراه',
+    'mobile_verified_at': 'زمان تأیید شماره همراه',
+    'tokens_invalid_before': 'زمان ابطال توکن‌های قبلی',
+    'purpose': 'هدف',
+    'expires_at': 'زمان انقضا',
+    'next_send_at': 'زمان مجاز ارسال بعدی',
+    'failed_attempts': 'تلاش‌های ناموفق',
+    'max_attempts': 'حداکثر تلاش مجاز',
+    'consumed_at': 'زمان مصرف',
+    'delivery_status': 'وضعیت ارسال',
+    'provider_code': 'کد پاسخ سرویس‌دهنده',
+    'correlation_id': 'شناسه پیگیری',
+    'request_fingerprint': 'اثر انگشت درخواست',
+    'phone_normalized': 'شماره همراه استاندارد',
+    'phone_verified_at': 'زمان تأیید شماره مشتری',
     'bank_account': 'حساب بانکی',
     'bank_name': 'نام بانک',
     'holder_name': 'نام صاحب حساب',
