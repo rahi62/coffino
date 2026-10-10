@@ -1,11 +1,8 @@
-import re
-
 from django.contrib.auth import get_user_model
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from apps.businesses.models import Branch, Business
+from .passwords import OwnerPasswordError, validate_owner_password as validate_password_policy
 
 
 class BootstrapError(ValueError):
@@ -13,21 +10,10 @@ class BootstrapError(ValueError):
 
 
 def validate_owner_password(password, *, user, business_name):
-    password = str(password or "")
-    if len(password) < 12:
-        raise BootstrapError("Owner password must be at least 12 characters.")
-    if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
-        raise BootstrapError("Owner password must contain at least one Latin letter and one digit.")
-    lowered = password.casefold()
-    if user.username and user.username.casefold() in lowered:
-        raise BootstrapError("Owner password must not contain the username.")
-    normalized_business = "".join(str(business_name).casefold().split())
-    if len(normalized_business) >= 4 and normalized_business in "".join(lowered.split()):
-        raise BootstrapError("Owner password must not contain the business name.")
     try:
-        validate_password(password, user=user)
-    except ValidationError as exc:
-        raise BootstrapError("Password validation failed: " + "; ".join(exc.messages)) from exc
+        validate_password_policy(password, user=user, business_name=business_name)
+    except OwnerPasswordError as exc:
+        raise BootstrapError(str(exc)) from exc
 
 
 def _one_or_none(queryset, duplicate_message):
