@@ -95,6 +95,7 @@ class OtpChallenge(TimeStampedModel):
     next_send_at=models.DateTimeField()
     failed_attempts=models.PositiveSmallIntegerField(default=0)
     max_attempts=models.PositiveSmallIntegerField(default=5)
+    verified_at=models.DateTimeField(null=True,blank=True)
     consumed_at=models.DateTimeField(null=True,blank=True)
     user=models.ForeignKey(
         User,null=True,blank=True,on_delete=models.SET_NULL,related_name='otp_challenges'

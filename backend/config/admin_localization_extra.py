@@ -23,6 +23,7 @@ FIELD_LABELS.update({
     'failed_attempts': 'تلاش‌های ناموفق',
     'max_attempts': 'حداکثر تلاش مجاز',
     'consumed_at': 'زمان مصرف',
+    'verified_at': 'زمان تأیید',
     'delivery_status': 'وضعیت ارسال',
     'provider_code': 'کد پاسخ سرویس‌دهنده',
     'correlation_id': 'شناسه پیگیری',
