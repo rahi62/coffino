@@ -16,6 +16,7 @@ export default function Login(){
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");
  const [username,setUsername]=useState("");const [password,setPassword]=useState("");const [showPassword,setShowPassword]=useState(false);
  const [mobile,setMobile]=useState("");const [challengeId,setChallengeId]=useState("");
+ const [retryAfter,setRetryAfter]=useState(0);const [resendVersion,setResendVersion]=useState(0);
  const [businessName,setBusinessName]=useState("");const [branchName,setBranchName]=useState("شعبه اصلی");const [businessType,setBusinessType]=useState("CAFE");
  const [ownerUsername,setOwnerUsername]=useState("owner");const [ownerEmail,setOwnerEmail]=useState("");const [ownerPassword,setOwnerPassword]=useState("");const [ownerPasswordConfirmation,setOwnerPasswordConfirmation]=useState("");
 
@@ -33,9 +34,9 @@ export default function Login(){
    }catch{if(i<attempts-1)await sleep(500);else if(!cancelled)setMode("login")}
  })();return()=>{cancelled=true}},[]);
 
- const run=async(fn:()=>Promise<void>)=>{setBusy(true);setError("");try{await fn()}catch(e:any){setError(e?.message||"ورود انجام نشد.")}finally{setBusy(false)}};
+ const run=async(fn:()=>Promise<void>)=>{if(busy)return;setBusy(true);setError("");try{await fn()}catch(e:any){setError(e?.message||"ورود انجام نشد.")}finally{setBusy(false)}};
  const passwordSubmit=(e:React.FormEvent)=>{e.preventDefault();void run(async()=>{await loginWithPassword(username.trim(),password);location.assign("/")})};
- const otpRequest=()=>run(async()=>{const x=await requestLoginOtp(mobile);setChallengeId(x.challenge_id)});
+ const otpRequest=()=>run(async()=>{const x=await requestLoginOtp(mobile);setChallengeId(x.challenge_id);setRetryAfter(x.retry_after_seconds);setResendVersion(v=>v+1)});
  const otpVerify=(code:string)=>run(async()=>{await loginWithOtp(challengeId,code);location.assign("/")});
  const setupSubmit=(e:React.FormEvent)=>{e.preventDefault();void run(async()=>{
    if(ownerPassword!==ownerPasswordConfirmation)throw new Error("تکرار گذرواژه یکسان نیست.");
@@ -64,7 +65,7 @@ export default function Login(){
       <div className="flex justify-end"><Link href="/forgot-password" className="text-sm font-bold text-[#a46722]">گذرواژه را فراموش کرده‌ام</Link></div>
       <button disabled={busy||!username.trim()||!password} className="h-12 w-full rounded-xl bg-[#211711] font-bold text-white disabled:opacity-50">{busy?"در حال ورود…":"ورود به پنل"}</button>
      </form>:<div className="mt-5">
-      {!challengeId?<div className="space-y-4"><label className="block text-sm font-bold">شماره همراه تأییدشده<input autoFocus dir="ltr" inputMode="tel" value={mobile} onChange={e=>setMobile(e.target.value)} placeholder="09123456789" className="mt-2 h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-4 text-left outline-none focus:border-[#b9792d]"/></label><button onClick={()=>void otpRequest()} disabled={busy||!mobile.trim()} className="h-12 w-full rounded-xl bg-[#211711] font-bold text-white disabled:opacity-50">{busy?"در حال ارسال…":"ارسال کد ورود"}</button></div>:<OtpForm busy={busy} onSubmit={otpVerify} onResend={otpRequest} title="کد ورود"/>}
+      {!challengeId?<div className="space-y-4"><label className="block text-sm font-bold">شماره همراه تأییدشده<input autoFocus dir="ltr" inputMode="tel" value={mobile} onChange={e=>setMobile(e.target.value)} placeholder="09123456789" className="mt-2 h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-4 text-left outline-none focus:border-[#b9792d]"/></label><button onClick={()=>void otpRequest()} disabled={busy||!/^((\+98|0098|98)?9|09)\d{9}$/.test(mobile.replace(/[\s\-()]/g,""))} className="h-12 w-full rounded-xl bg-[#211711] font-bold text-white disabled:opacity-50">{busy?"در حال ارسال…":"ارسال کد ورود"}</button></div>:<><OtpForm busy={busy} retryAfterSeconds={retryAfter} resendVersion={resendVersion} onSubmit={otpVerify} onResend={otpRequest} title="کد ورود" description="اگر حساب فعالی با این شماره وجود داشته باشد، کد ورود ارسال می‌شود."/><button type="button" disabled={busy} className="mt-3 text-sm font-bold text-[#a46722]" onClick={()=>{setChallengeId("");setError("")}}>تغییر شماره همراه</button></>}
      </div>}
 
      {error&&<div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
