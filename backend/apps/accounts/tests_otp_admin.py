@@ -111,15 +111,6 @@ class PlatformOtpProviderAdminTests(TestCase):
         self.assertTrue(self.admin.has_view_permission(request))
         self.assertTrue(self.admin.has_change_permission(request))
 
-        business_user = User.objects.create_user(
-            username="staff-no-global-otp",
-            password="Staff-Strong-2026!",
-            is_staff=True,
-            is_superuser=False,
-        )
-        # The custom User model requires a tenant for non-superusers; avoid saving
-        # an invalid user and assert with an unsaved staff-like principal instead.
-        business_user.delete()
         limited = Mock(is_superuser=False)
         request.user = limited
         self.assertFalse(self.admin.has_module_permission(request))
