@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.accounts.otp_providers import OtpDeliveryResult
 from apps.accounts.models import OtpChallenge
 from apps.accounts.otp import request_otp, verify_otp
 from apps.businesses.models import Branch, Business
@@ -23,7 +24,7 @@ class SaasRegistrationApiTests(APITestCase):
 
     def setUp(self):
         sender_patch = patch("apps.accounts.otp.get_otp_sender")
-        sender_patch.start().return_value.send.return_value = __import__("apps.accounts.otp_providers", fromlist=["OtpDeliveryResult"]).OtpDeliveryResult(accepted=True, provider_code="0")
+        sender_patch.start().return_value.send.return_value = OtpDeliveryResult(accepted=True, provider_code="0")
         self.addCleanup(sender_patch.stop)
         cache.clear()
         rate = patch("apps.accounts.throttles.RegistrationThrottle.rate", "100/hour", create=True)
