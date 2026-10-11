@@ -58,6 +58,8 @@ CORS_ALLOWED_ORIGINS=https://cafeno.digitalafarin.ir
 CSRF_TRUSTED_ORIGINS=https://cafeno.digitalafarin.ir
 ```
 
+Before release, verify the actual reverse-proxy chain. `CAF_INO_NUM_PROXIES` must match the exact number of trusted proxies in front of Django; do not guess this value if another proxy/CDN is added.
+
 ## Frontend variables
 
 Use `deploy/coolify/frontend.env.example`.

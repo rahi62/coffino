@@ -115,6 +115,7 @@ REST_FRAMEWORK={
  'DEFAULT_AUTHENTICATION_CLASSES':['apps.accounts.authentication.CafinoJWTAuthentication','rest_framework.authentication.SessionAuthentication'],
  'DEFAULT_FILTER_BACKENDS':['django_filters.rest_framework.DjangoFilterBackend','rest_framework.filters.SearchFilter'],
  'DEFAULT_SCHEMA_CLASS':'drf_spectacular.openapi.AutoSchema',
+ 'NUM_PROXIES':int(os.getenv('CAF_INO_NUM_PROXIES','0')),
  'DEFAULT_THROTTLE_RATES':{
   'public_menu':'120/min','online_order':'20/min','ops_device':'60/min',
   'auth_registration':'5/hour','auth_login':'10/min','auth_otp_request':'5/hour',

@@ -179,3 +179,10 @@ Rollback کد بعد از اجرای migrationهای additive معمولاً م�
 - subscription / plan / entitlement
 - SaaS billing / payment
 - customer-value OTP enforcement در POS/online ordering
+
+
+## Trusted reverse proxies
+
+DRF throttling and OTP abuse controls use the same client-IP resolution policy.
+
+`CAF_INO_NUM_PROXIES` must equal the number of trusted reverse proxies between the browser and Django. A value of `0` ignores forwarded IP headers and uses `REMOTE_ADDR`. Do not increase this value without verifying the actual Coolify/proxy chain, because trusting untrusted forwarded headers weakens IP-based throttling.

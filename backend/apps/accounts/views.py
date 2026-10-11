@@ -23,11 +23,17 @@ from .serializers import (
     PasswordRecoveryRequestSerializer,
     PasswordResetSerializer,
 )
-from .throttles import OtpRequestThrottle, OtpVerifyThrottle, RegistrationThrottle, PasswordRecoveryThrottle
+from .throttles import (
+    OtpRequestThrottle,
+    OtpVerifyThrottle,
+    RegistrationThrottle,
+    PasswordRecoveryThrottle,
+    request_client_ident,
+)
 
 
 def _request_ip(request):
-    return str(request.META.get("REMOTE_ADDR") or "")
+    return request_client_ident(request)
 
 
 @api_view(["POST"])

@@ -1,4 +1,4 @@
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, BaseThrottle
 
 
 class RegistrationThrottle(AnonRateThrottle):
@@ -19,3 +19,9 @@ class OtpVerifyThrottle(AnonRateThrottle):
 
 class PasswordRecoveryThrottle(AnonRateThrottle):
     scope = "auth_recovery"
+
+
+
+def request_client_ident(request) -> str:
+    """Return the DRF client identifier using the configured trusted proxy count."""
+    return BaseThrottle().get_ident(request)
