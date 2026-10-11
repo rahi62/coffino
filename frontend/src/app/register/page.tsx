@@ -23,6 +23,8 @@ export default function RegisterPage(){
  const [error,setError]=useState("");
  const [mobile,setMobile]=useState("");
  const [challengeId,setChallengeId]=useState("");
+ const [retryAfter,setRetryAfter]=useState(0);
+ const [resendVersion,setResendVersion]=useState(0);
  const [verificationGrant,setVerificationGrant]=useState("");
  const [businessName,setBusinessName]=useState("");
  const [businessType,setBusinessType]=useState("CAFE");
@@ -38,11 +40,11 @@ export default function RegisterPage(){
    mobile,verificationGrant,businessName,businessType,username,password,passwordConfirmation,branchName,
  }),[mobile,verificationGrant,businessName,businessType,username,password,passwordConfirmation,branchName]);
 
- const run=async(fn:()=>Promise<void>)=>{setBusy(true);setError("");try{await fn()}catch(e:any){setError(e?.message||"انجام عملیات ممکن نشد.")}finally{setBusy(false)}};
+ const run=async(fn:()=>Promise<void>)=>{if(busy)return;setBusy(true);setError("");try{await fn()}catch(e:any){setError(e?.message||"انجام عملیات ممکن نشد.")}finally{setBusy(false)}};
 
  const sendOtp=()=>run(async()=>{
    const response=await requestRegistrationOtp(normalizeMobileInput(mobile));
-   setChallengeId(response.challenge_id);setStep(1);
+   setChallengeId(response.challenge_id);setRetryAfter(response.retry_after_seconds);setResendVersion(x=>x+1);setStep(1);
  });
  const verifyOtp=(code:string)=>run(async()=>{
    const response=await verifyRegistrationOtp(challengeId,code);
@@ -103,8 +105,9 @@ export default function RegisterPage(){
       </label>
      </div>}
 
-     {step===1&&<OtpForm busy={busy} onSubmit={verifyOtp} onResend={sendOtp} description={`کد ارسال‌شده برای ${mobile} را وارد کنید.`}/>}
+     {step===1&&<OtpForm busy={busy} retryAfterSeconds={retryAfter} resendVersion={resendVersion} onSubmit={verifyOtp} onResend={sendOtp} description={`کد تأیید برای ${mobile} درخواست شده است.`}/>}
 
+     {step===1&&<button type="button" disabled={busy} className="mt-4 text-sm font-bold text-[#a46722] disabled:opacity-50" onClick={()=>{setChallengeId("");setVerificationGrant("");setRetryAfter(0);setStep(0)}}>اصلاح شماره همراه</button>}
      {step===2&&<div className="space-y-4">
       <div className="flex items-center gap-2"><Store size={21} className="text-[#b9792d]"/><h2 className="text-lg font-black">مشخصات کسب‌وکار</h2></div>
       <label className="block text-sm font-bold">نام مجموعه<input autoFocus value={businessName} onChange={e=>setBusinessName(e.target.value)} placeholder="مثلاً کافه مرکزی" className="mt-2 h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-4 outline-none focus:border-[#b9792d]"/></label>
