@@ -128,3 +128,18 @@ The Backend Dockerfile starts `/app/start-web.sh`. On the single web instance, i
 Set `CAF_INO_RUN_MIGRATIONS=0` only when a dedicated migration job reliably runs before the web application. Multiple simultaneously-starting web replicas require a coordinated migration job or locking; do not use concurrent startup migrations as a general scaling strategy.
 
 Coolify may override the image CMD through custom start commands. Verify the service has no conflicting command override before relying on this policy.
+
+
+## Troubleshooting: Backend Degraded while API returns HTTP 200
+
+Coolify's dashboard-managed HTTP healthcheck executes **inside the final application container** and requires `curl` or `wget` in that container. The Python slim base image does not guarantee either binary. The backend Dockerfile explicitly installs `curl` for this reason.
+
+If the public `/api/v1/health/` responds with HTTP 200 but Coolify reports `running:unhealthy`:
+
+1. Verify the actual deployed image was rebuilt from a commit containing the `curl` installation.
+2. The healthcheck should target `GET http://127.0.0.1:8000/api/v1/health/` (or the verified internal `PORT`).
+3. Ensure the host used by Django is present in `DJANGO_ALLOWED_HOSTS`.
+4. On the container, `command -v curl` and `curl -fsS http://127.0.0.1:8000/api/v1/health/` should succeed.
+5. If the process starts but remains unhealthy, inspect Docker's healthcheck output; public API reachability alone does not prove the in-container probe works.
+
+Do not disable the healthcheck merely to hide a failing probe. Once the new image is deployed, Coolify must recreate the container to pick up the installed binary.
