@@ -19,7 +19,12 @@ assert.ok(api.indexOf("manage.py railway_preflight")<api.indexOf("manage.py migr
 const worker=read("backend/railway-worker.toml");assert.ok(worker.includes("celery -A config worker"));
 const beat=read("backend/railway-beat.toml");assert.ok(beat.includes("celery -A config beat"));
 const front=read("frontend/railway.toml");assert.ok(front.includes('healthcheckPath = "/login"'));
-const docker=read("backend/Dockerfile");assert.ok(docker.includes("${PORT:-8000}"),"Backend Dockerfile must bind Railway PORT");
+const docker=read("backend/Dockerfile");
+const startup=read("backend/start-web.sh");
+assert.ok(docker.includes('CMD ["/bin/sh", "/app/start-web.sh"]'),"Backend Dockerfile must launch the production startup script");
+assert.ok(startup.includes("${PORT:-8000}"),"Backend startup must bind Railway/Coolify PORT");
+assert.ok(startup.includes("manage.py migrate --noinput"),"Backend startup must apply committed migrations");
+assert.ok(startup.indexOf("manage.py migrate --noinput") < startup.indexOf("exec gunicorn"),"Database migrations must finish before Gunicorn starts");
 const frontendDocker=read("frontend/Dockerfile");
 for(const token of ["ARG NEXT_PUBLIC_API_URL","ARG NEXT_PUBLIC_API_ROOT","ENV NEXT_PUBLIC_API_URL","ENV NEXT_PUBLIC_API_ROOT"])assert.ok(frontendDocker.includes(token),`Frontend Railway build contract missing ${token}`);
 const nextConfig=read("frontend/next.config.ts");assert.ok(nextConfig.includes('output:"standalone"'),"Next standalone output is required for Docker/Railway");
