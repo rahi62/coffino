@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -20,6 +21,12 @@ User = get_user_model()
 )
 class SaasRegistrationApiTests(APITestCase):
     PASSWORD = "Cafino-Owner-Strong-2026!"
+
+    def setUp(self):
+        cache.clear()
+        rate = patch("apps.accounts.throttles.RegistrationThrottle.rate", "100/hour", create=True)
+        rate.start()
+        self.addCleanup(rate.stop)
 
     def verified_grant(self, mobile="09123456789"):
         with patch("apps.accounts.otp.generate_otp_code", return_value="123456"):

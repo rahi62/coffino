@@ -1,11 +1,18 @@
-from django.db import IntegrityError
+from datetime import timedelta
+from uuid import uuid4
+
+from django.conf import settings
+from django.db import IntegrityError, transaction
+from django.utils import timezone
 from rest_framework import permissions, status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from .models import OtpChallenge
-from .otp import OtpError, request_otp, verify_otp
+from .models import OtpChallenge, User
+from .otp import OtpError, consume_verification_grant, request_otp, verify_otp
+from .phone import mask_mobile
+from .tokens import issue_token_pair
 from .otp_providers import OtpDeliveryError
 from .registration import RegistrationError, register_saas_owner
 from .serializers import RegistrationOtpRequestSerializer, OtpVerifySerializer, SaasRegistrationSerializer
@@ -17,6 +24,7 @@ def _request_ip(request):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([OtpRequestThrottle])
 def registration_otp_request(request):
@@ -42,6 +50,7 @@ def registration_otp_request(request):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([OtpVerifyThrottle])
 def registration_otp_verify(request):
@@ -59,6 +68,7 @@ def registration_otp_verify(request):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 @throttle_classes([RegistrationThrottle])
 def register(request):
@@ -92,3 +102,59 @@ def register(request):
         },
         status=status.HTTP_201_CREATED,
     )
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+@throttle_classes([OtpRequestThrottle])
+def login_otp_request(request):
+    serializer = RegistrationOtpRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    mobile = serializer.validated_data["mobile"]
+    users = list(User.objects.filter(
+        mobile=mobile, mobile_verified_at__isnull=False, is_active=True,
+    )[:2])
+    result = None
+    if len(users) == 1:
+        try:
+            result = request_otp(
+                mobile=mobile, purpose=OtpChallenge.Purpose.STAFF_LOGIN,
+                user=users[0], business=users[0].business, request_ip=_request_ip(request),
+            )
+        except (OtpError, OtpDeliveryError):
+            # Keep response status and shape identical for absent and existing accounts.
+            pass
+    return Response({
+        "detail": "اگر حساب فعالی با این شماره وجود داشته باشد، کد ورود ارسال می‌شود.",
+        "challenge_id": result.challenge_id if result else uuid4(),
+        "expires_at": result.expires_at if result else timezone.now() + timedelta(seconds=settings.CAF_INO_OTP_TTL_SECONDS),
+        "retry_after_seconds": settings.CAF_INO_OTP_RESEND_SECONDS,
+        "mobile": mask_mobile(mobile),
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+@throttle_classes([OtpVerifyThrottle])
+def login_otp_verify(request):
+    serializer = OtpVerifySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    try:
+        # Verification commits failed attempts even when the caller receives an error.
+        grant = verify_otp(
+            challenge_id=serializer.validated_data["challenge_id"],
+            code=serializer.validated_data["code"],
+            expected_purpose=OtpChallenge.Purpose.STAFF_LOGIN,
+        )
+        with transaction.atomic():
+            verified = consume_verification_grant(grant, purpose=OtpChallenge.Purpose.STAFF_LOGIN)
+            user = User.objects.select_for_update().get(
+                pk=verified.user_id, mobile=verified.mobile,
+                mobile_verified_at__isnull=False, is_active=True,
+            )
+            pair = issue_token_pair(user)
+    except (OtpError, User.DoesNotExist) as exc:
+        raise ValidationError({"detail": "کد ورود معتبر یا قابل استفاده نیست."}) from exc
+    return Response(pair)

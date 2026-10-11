@@ -24,6 +24,10 @@ class RegistrationOtpRequestSerializer(StrictSerializer):
             raise serializers.ValidationError("شماره همراه معتبر نیست؛ نمونه صحیح: ۰۹۱۲۳۴۵۶۷۸۹") from exc
 
 
+class LoginOtpRequestSerializer(RegistrationOtpRequestSerializer):
+    pass
+
+
 class OtpVerifySerializer(StrictSerializer):
     challenge_id = serializers.UUIDField()
     code = serializers.RegexField(r"^\d{6}$", error_messages={"invalid": "کد باید دقیقاً ۶ رقم باشد."})

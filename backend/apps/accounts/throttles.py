@@ -1,21 +1,21 @@
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import AnonRateThrottle
 
 
-class RegistrationThrottle(ScopedRateThrottle):
+class RegistrationThrottle(AnonRateThrottle):
     scope = "auth_registration"
 
 
-class AuthLoginThrottle(ScopedRateThrottle):
+class AuthLoginThrottle(AnonRateThrottle):
     scope = "auth_login"
 
 
-class OtpRequestThrottle(ScopedRateThrottle):
+class OtpRequestThrottle(AnonRateThrottle):
     scope = "auth_otp_request"
 
 
-class OtpVerifyThrottle(ScopedRateThrottle):
+class OtpVerifyThrottle(AnonRateThrottle):
     scope = "auth_otp_verify"
 
 
-class PasswordRecoveryThrottle(ScopedRateThrottle):
+class PasswordRecoveryThrottle(AnonRateThrottle):
     scope = "auth_recovery"
