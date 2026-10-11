@@ -29,7 +29,7 @@ export default function Sidebar(){
  const pathname=usePathname();
  const activeSection=sections.find(section=>section.hrefs.some(href=>href==="/"?pathname==="/":pathname===href||pathname.startsWith(`${href}/`)))?.id||"main";
  const [openSections,setOpenSections]=useState<Record<string,boolean>>(()=>({main:true,[activeSection]:true}));
- useEffect(()=>{const reload=()=>{if(!isPublicRoute(pathname))api<any>("/permissions/me/").then(x=>setPerms(x.permissions)).catch(()=>setPerms({}))};reload();window.addEventListener("cafino-permissions-changed",reload);return()=>window.removeEventListener("cafino-permissions-changed",reload)},[pathname]);
+ useEffect(()=>{const reload=()=>{if(!isPublicRoute(pathname)){setPerms(null);api<any>("/permissions/me/").then(x=>setPerms(x.permissions)).catch(()=>setPerms({}))}};reload();window.addEventListener("cafino-permissions-changed",reload);return()=>window.removeEventListener("cafino-permissions-changed",reload)},[pathname]);
  useEffect(()=>{setOpenSections(current=>({...current,[activeSection]:true}));setMobileOpen(current=>reduceMobileNavigation(current,"navigate"))},[activeSection,pathname]);
  useEffect(()=>{
   if(!mobileOpen)return;
