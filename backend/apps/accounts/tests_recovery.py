@@ -158,6 +158,44 @@ class PasswordRecoveryApiTests(TestCase):
         replay = self.client.post("/api/v1/auth/password/reset/", payload, format="json")
         self.assertEqual(replay.status_code, 400)
 
+    def test_successful_reset_invalidates_other_verified_recovery_grants(self):
+        first_request = self._forgot(self.user.username)
+        first_verified = self._verify(first_request.data["challenge_id"])
+        self.assertEqual(first_verified.status_code, 200)
+
+        cache.clear()
+        second_request = self._forgot(self.user.username)
+        second_verified = self._verify(second_request.data["challenge_id"])
+        self.assertEqual(second_verified.status_code, 200)
+        self.assertNotEqual(
+            first_verified.data["verification_grant"],
+            second_verified.data["verification_grant"],
+        )
+
+        first_reset = self.client.post(
+            "/api/v1/auth/password/reset/",
+            {
+                "verification_grant": first_verified.data["verification_grant"],
+                "password": self.NEW_PASSWORD,
+                "password_confirmation": self.NEW_PASSWORD,
+            },
+            format="json",
+        )
+        self.assertEqual(first_reset.status_code, 200)
+
+        second_reset = self.client.post(
+            "/api/v1/auth/password/reset/",
+            {
+                "verification_grant": second_verified.data["verification_grant"],
+                "password": "Another-Strong-Password-2027!",
+                "password_confirmation": "Another-Strong-Password-2027!",
+            },
+            format="json",
+        )
+        self.assertEqual(second_reset.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.NEW_PASSWORD))
+
     def test_weak_password_rolls_back_grant_consumption(self):
         requested = self._forgot(self.user.username)
         verified = self._verify(requested.data["challenge_id"])

@@ -102,7 +102,13 @@ def reset_password_with_grant(*, verification_grant: str, password: str) -> User
     except OwnerPasswordError as exc:
         raise PasswordRecoveryError(str(exc)) from exc
 
+    now = timezone.now()
     user.set_password(password)
-    user.tokens_invalid_before = timezone.now()
+    user.tokens_invalid_before = now
     user.save(update_fields=["password", "tokens_invalid_before"])
+    OtpChallenge.objects.filter(
+        user=user,
+        purpose=OtpChallenge.Purpose.PASSWORD_RECOVERY,
+        consumed_at__isnull=True,
+    ).update(consumed_at=now, updated_at=now)
     return user
