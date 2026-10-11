@@ -20,7 +20,6 @@ from apps.businesses.models import Business
 
 
 @override_settings(
-    CAF_INO_OTP_SENDER="apps.accounts.otp_providers.FakeOtpSender",
     CAF_INO_OTP_TTL_SECONDS=300,
     CAF_INO_OTP_RESEND_SECONDS=60,
     CAF_INO_OTP_MAX_ATTEMPTS=5,
@@ -29,6 +28,10 @@ from apps.businesses.models import Business
 )
 class OtpLifecycleTests(TestCase):
     def setUp(self):
+        sender_patch = patch("apps.accounts.otp.get_otp_sender")
+        sender = sender_patch.start().return_value
+        sender.send.return_value = __import__("apps.accounts.otp_providers", fromlist=["OtpDeliveryResult"]).OtpDeliveryResult(accepted=True, provider_code="0")
+        self.addCleanup(sender_patch.stop)
         cache.clear()
         self.business = Business.objects.create(name="کافه OTP")
 
