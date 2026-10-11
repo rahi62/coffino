@@ -21,7 +21,7 @@ export default function RootLayout({children}:{children:React.ReactNode}){
         <AuthGuard>
           <div className="flex min-h-screen w-full min-w-0">
             <Sidebar />
-            <main className="min-w-0 w-full flex-1 p-3 pb-6 pt-[4.5rem] md:p-5 xl:p-6">{children}</main>
+            <main className="min-w-0 w-full flex-1 p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] pt-[4.5rem] md:p-5 md:pb-5 xl:p-6">{children}</main>
           </div>
         </AuthGuard>
       </body>
