@@ -201,6 +201,36 @@ class SaasRegistrationApiTests(APITestCase):
         )
         self.assertEqual(reused.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_registration_can_login_and_reach_authenticated_onboarding_context(self):
+        registered = self.client.post("/api/v1/auth/register/", self.payload(), format="json")
+        self.assertEqual(registered.status_code, status.HTTP_201_CREATED)
+
+        logged_in = self.client.post(
+            "/api/token/",
+            {"username": "new-owner", "password": self.PASSWORD},
+            format="json",
+            REMOTE_ADDR="203.0.113.34",
+        )
+        self.assertEqual(logged_in.status_code, status.HTTP_200_OK)
+        self.assertTrue(logged_in.data["access"])
+        self.assertTrue(logged_in.data["refresh"])
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {logged_in.data['access']}")
+        me = self.client.get("/api/v1/me/")
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data["username"], "new-owner")
+        self.assertEqual(me.data["role"], User.Role.OWNER)
+        self.assertEqual(me.data["business_id"], registered.data["business"]["id"])
+        self.assertTrue(me.data["mobile_verified"])
+
+        context = self.client.get("/api/v1/settings/context/")
+        self.assertEqual(context.status_code, status.HTTP_200_OK)
+        self.assertEqual(context.data["business"]["id"], registered.data["business"]["id"])
+        self.assertEqual(
+            {row["id"] for row in context.data["branches"]},
+            {registered.data["branch"]["id"]},
+        )
+
     def test_new_owner_can_only_list_own_business_and_branch(self):
         other_business = Business.objects.create(name="کسب‌وکار دیگر")
         other_branch = Branch.objects.create(business=other_business, name="شعبه دیگر")
