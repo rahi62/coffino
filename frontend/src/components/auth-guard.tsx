@@ -1,42 +1,37 @@
 "use client";
 import {useEffect,useState} from "react";
 import {usePathname} from "next/navigation";
-import {base,clearToken,getToken} from "@/lib/api";
+import {api} from "@/lib/api";
+import {clearSession,hasStoredSession} from "@/lib/auth";
 
 type AuthState="checking"|"ready"|"error";
+const publicRoutes=["/login","/register","/forgot-password","/reset-password"];
+
+function isPublic(pathname:string){
+ return publicRoutes.includes(pathname)||pathname.startsWith("/menu/");
+}
 
 export default function AuthGuard({children}:{children:React.ReactNode}){
  const pathname=usePathname();
  const [state,setState]=useState<AuthState>("checking");
 
  useEffect(()=>{
-  const publicRoute=pathname==="/login"||pathname.startsWith("/menu/");
-  if(publicRoute){setState("ready");return}
+  if(isPublic(pathname)){setState("ready");return}
+  if(!hasStoredSession()){location.replace("/login");return}
 
-  const token=getToken();
-  if(!token){location.replace("/login");return}
-
-  const controller=new AbortController();
+  let cancelled=false;
   setState("checking");
-
-  fetch(`${base}/me/`,{
-   headers:{Authorization:`Bearer ${token}`},
-   cache:"no-store",
-   signal:controller.signal,
-  }).then(response=>{
-   if(response.status===401){
-    clearToken();
-    location.replace("/login");
-    return;
+  api("/me/").then(()=>{
+   if(!cancelled)setState("ready");
+  }).catch((error)=>{
+   if(cancelled)return;
+   const message=String(error?.message||"");
+   if(message.includes("نشست")||!hasStoredSession()){
+    clearSession();location.replace("/login");return;
    }
-   if(!response.ok)throw new Error(`session_check_${response.status}`);
-   setState("ready");
-  }).catch(error=>{
-   if(error?.name==="AbortError")return;
    setState("error");
   });
-
-  return()=>controller.abort();
+  return()=>{cancelled=true};
  },[pathname]);
 
  if(state==="ready")return <>{children}</>;
