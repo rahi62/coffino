@@ -65,7 +65,7 @@ export default function Login(){
     </div>}
 
     {mode==="setup"&&<form onSubmit={setupSubmit} className="space-y-3">
-      <div className="mb-5"><span className="rounded-full bg-[#f6eadb] px-3 py-1 text-xs font-black text-[#a46722]">راه‌اندازی Local</span><h1 className="mt-3 text-2xl font-black">نصب محلی را آماده کنید</h1><p className="mt-2 text-sm text-[#8d8178]">فقط برای دیتابیس تازه Local فعال است.</p></div>
+      <div className="mb-5"><span className="rounded-full bg-[#f6eadb] px-3 py-1 text-xs font-black text-[#a46722]">راه‌اندازی اولیه Local</span><h1 className="mt-3 text-2xl font-black">نصب محلی را آماده کنید</h1><p className="mt-2 text-sm text-[#8d8178]">فقط برای دیتابیس تازه Local فعال است.</p></div>
       <input autoFocus placeholder="نام کسب‌وکار" value={businessName} onChange={e=>setBusinessName(e.target.value)} className="h-11 w-full rounded-xl border px-3"/>
       <div className="grid grid-cols-2 gap-2"><input placeholder="شعبه اصلی" value={branchName} onChange={e=>setBranchName(e.target.value)} className="h-11 rounded-xl border px-3"/><select value={businessType} onChange={e=>setBusinessType(e.target.value)} className="h-11 rounded-xl border px-2"><option value="CAFE">کافه</option><option value="RESTAURANT">رستوران</option><option value="FAST_FOOD">فست‌فود</option><option value="BAKERY">بیکری</option></select></div>
       <input dir="ltr" placeholder="نام کاربری مالک" value={ownerUsername} onChange={e=>setOwnerUsername(e.target.value)} className="h-11 w-full rounded-xl border px-3 text-left"/>
