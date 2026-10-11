@@ -56,8 +56,13 @@ export default function RegisterPage(){
      username:username.trim(),email:email.trim(),password,
      password_confirmation:passwordConfirmation,verification_grant:verificationGrant,
    });
-   await loginWithPassword(username.trim(),password);
-   location.assign("/settings/onboarding");
+   try{
+     await loginWithPassword(username.trim(),password);
+     location.assign("/settings/onboarding");
+   }catch{
+     // Registration is already committed. Never retry tenant creation with a consumed grant.
+     location.assign("/login?registered=1");
+   }
  });
 
  const continueStep=()=>{

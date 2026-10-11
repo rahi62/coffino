@@ -12,11 +12,18 @@ type LoginMethod="password"|"otp";
 export default function Login(){
  const [mode,setMode]=useState<PageMode>("checking");
  const [method,setMethod]=useState<LoginMethod>("password");
+ const [notice,setNotice]=useState("");
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");
  const [username,setUsername]=useState("");const [password,setPassword]=useState("");const [showPassword,setShowPassword]=useState(false);
  const [mobile,setMobile]=useState("");const [challengeId,setChallengeId]=useState("");
  const [businessName,setBusinessName]=useState("");const [branchName,setBranchName]=useState("شعبه اصلی");const [businessType,setBusinessType]=useState("CAFE");
  const [ownerUsername,setOwnerUsername]=useState("owner");const [ownerEmail,setOwnerEmail]=useState("");const [ownerPassword,setOwnerPassword]=useState("");const [ownerPasswordConfirmation,setOwnerPasswordConfirmation]=useState("");
+
+ useEffect(()=>{
+   const params=new URLSearchParams(location.search);
+   if(params.get("registered")==="1")setNotice("حساب کسب‌وکار با موفقیت ساخته شد. برای ادامه وارد شوید.");
+   else if(params.get("reset")==="1")setNotice("گذرواژه با موفقیت تغییر کرد. با گذرواژه جدید وارد شوید.");
+ },[]);
 
  useEffect(()=>{let cancelled=false;const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));(async()=>{
    const attempts=typeof window!=="undefined"&&Boolean((window as any).cafino)?60:1;
@@ -45,6 +52,7 @@ export default function Login(){
 
     {mode==="login"&&<div>
      <h1 className="text-3xl font-black text-[#211711]">خوش آمدید</h1><p className="mt-2 text-sm text-[#8d8178]">با گذرواژه یا کد یک‌بارمصرف وارد پنل شوید.</p>
+     {notice&&<div role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-900">{notice}</div>}
      <div className="mt-6 grid grid-cols-2 rounded-xl bg-[#f2ece5] p-1">
       <button onClick={()=>{setMethod("password");setChallengeId("");setError("")}} className={`rounded-lg px-3 py-2 text-sm font-bold ${method==="password"?"bg-white shadow-sm":"text-[#82756c]"}`}><UserRound size={16} className="ml-1 inline"/>گذرواژه</button>
       <button onClick={()=>{setMethod("otp");setError("")}} className={`rounded-lg px-3 py-2 text-sm font-bold ${method==="otp"?"bg-white shadow-sm":"text-[#82756c]"}`}><KeyRound size={16} className="ml-1 inline"/>کد ورود</button>
