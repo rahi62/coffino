@@ -153,12 +153,18 @@ class PlatformOtpProviderConfig(TimeStampedModel):
         default=10,
         validators=[MinValueValidator(1), MaxValueValidator(60)],
     )
+    sender_number = models.CharField(max_length=32, blank=True, help_text="شماره خط فرستنده؛ قرارداد ارسال OTP با خط اختصاصی باید توسط Provider تأیید شود.")
     test_mobile = models.CharField(max_length=11, blank=True)
 
     def clean(self):
         super().clean()
         if self.api_base_url and not self.api_base_url.lower().startswith("https://"):
             raise ValidationError({"api_base_url": "آدرس Provider باید با HTTPS باشد."})
+        if self.sender_number:
+            value = self.sender_number.strip()
+            if not value.isascii() or not value.isdigit() or not 3 <= len(value) <= 32:
+                raise ValidationError({"sender_number": "شماره فرستنده باید بین ۳ تا ۳۲ رقم لاتین باشد."})
+            self.sender_number = value
         if self.test_mobile:
             self.test_mobile = normalize_iran_mobile(self.test_mobile)
 
