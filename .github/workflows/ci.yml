@@ -108,3 +108,47 @@ jobs:
       - run: node scripts/railway-contract.js
       - run: node scripts/pos-contract.js
       - run: node scripts/responsive-contract.js
+
+
+  backend-docker-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production Backend Docker image
+        run: docker build --tag cafino-backend:ci ./backend
+      - name: Verify image healthcheck and curl
+        run: |
+          docker image inspect cafino-backend:ci --format '{{json .Config.Healthcheck}}' | grep -q 'api/v1/health'
+          docker run --rm --entrypoint curl cafino-backend:ci --version
+      - name: Run PostgreSQL and Backend
+        run: |
+          docker network create cafino-ci
+          docker run -d --name cafino-ci-db --network cafino-ci \
+            -e POSTGRES_DB=cafino_ci -e POSTGRES_USER=cafino -e POSTGRES_PASSWORD=cafino-ci \
+            postgres:17-alpine
+          docker run -d --name cafino-ci-backend --network cafino-ci \
+            -e DJANGO_DEBUG=0 -e CAF_INO_ENV=saas \
+            -e DJANGO_SECRET_KEY=ci-docker-health-only \
+            -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+            -e DJANGO_SECURE_SSL_REDIRECT=0 \
+            -e DATABASE_URL=postgresql://cafino:cafino-ci@cafino-ci-db:5432/cafino_ci \
+            cafino-backend:ci
+      - name: Verify container reaches healthy
+        run: |
+          healthy=0
+          for i in $(seq 1 36); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' cafino-ci-backend)"
+            if [ "$status" = "healthy" ]; then healthy=1; break; fi
+            if [ "$status" = "unhealthy" ]; then break; fi
+            sleep 5
+          done
+          if [ "$healthy" != 1 ]; then
+            docker logs cafino-ci-backend || true
+            docker inspect cafino-ci-backend --format '{{json .State.Health}}' || true
+            exit 1
+          fi
+      - name: Show diagnostics on failure
+        if: failure()
+        run: |
+          docker logs cafino-ci-db || true
+          docker logs cafino-ci-backend || true
