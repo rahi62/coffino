@@ -132,12 +132,7 @@ PARSGREEN_SIGNATURE=os.getenv('PARSGREEN_SIGNATURE','')
 PARSGREEN_OTP_ADD_NAME=os.getenv('PARSGREEN_OTP_ADD_NAME','1')=='1'
 PARSGREEN_TIMEOUT_SECONDS=int(os.getenv('PARSGREEN_TIMEOUT_SECONDS','10'))
 PARSGREEN_OTP_ENABLED=os.getenv('PARSGREEN_OTP_ENABLED','0')=='1'
-CAF_INO_OTP_SENDER=os.getenv(
- 'CAF_INO_OTP_SENDER',
- 'apps.accounts.otp_providers.ParsGreenOtpSender' if PARSGREEN_OTP_ENABLED else (
-  'apps.accounts.otp_providers.FakeOtpSender' if DEBUG else 'apps.accounts.otp_providers.DisabledOtpSender'
- ),
-)
+CAF_INO_OTP_SENDER="apps.accounts.otp_providers.ParsGreenOtpSender" if PARSGREEN_OTP_ENABLED else "apps.accounts.otp_providers.DisabledOtpSender"
 CAF_INO_OTP_TTL_SECONDS=int(os.getenv('CAF_INO_OTP_TTL_SECONDS','300'))
 CAF_INO_OTP_GRANT_TTL_SECONDS=int(os.getenv('CAF_INO_OTP_GRANT_TTL_SECONDS','300'))
 CAF_INO_OTP_RESEND_SECONDS=int(os.getenv('CAF_INO_OTP_RESEND_SECONDS','60'))
