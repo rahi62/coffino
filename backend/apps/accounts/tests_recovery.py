@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from apps.accounts.otp_providers import OtpDeliveryResult
 from apps.accounts.models import OtpChallenge, User
 from apps.businesses.models import Business
 
@@ -20,7 +21,7 @@ class PasswordRecoveryApiTests(TestCase):
 
     def setUp(self):
         sender_patch = patch("apps.accounts.otp.get_otp_sender")
-        sender_patch.start().return_value.send.return_value = __import__("apps.accounts.otp_providers", fromlist=["OtpDeliveryResult"]).OtpDeliveryResult(accepted=True, provider_code="0")
+        sender_patch.start().return_value.send.return_value = OtpDeliveryResult(accepted=True, provider_code="0")
         self.addCleanup(sender_patch.stop)
         cache.clear()
         self.business = Business.objects.create(name="کافه بازیابی", deployment_type="SAAS")
