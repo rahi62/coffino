@@ -5,6 +5,7 @@ from .admin_localization import FIELD_LABELS, MODEL_LABELS
 
 MODEL_LABELS.update({
     'accounts.OtpChallenge': ('چالش رمز یک‌بارمصرف', 'چالش‌های رمز یک‌بارمصرف'),
+    'accounts.PlatformOtpProviderConfig': ('تنظیمات سراسری OTP', 'تنظیمات سراسری OTP'),
     'accounting.BankAccount': ('حساب بانکی', 'حساب‌های بانکی'),
     'inventory.IngredientCategory': ('دسته ماده اولیه', 'دسته‌های مواد اولیه'),
     'operations.DeviceInstallation': ('نصب دستگاه', 'نصب‌های دستگاه'),
@@ -26,6 +27,10 @@ FIELD_LABELS.update({
     'verified_at': 'زمان تأیید',
     'delivery_status': 'وضعیت ارسال',
     'provider_code': 'کد پاسخ سرویس‌دهنده',
+    'api_base_url': 'نشانی پایه سرویس‌دهنده',
+    'signature_encrypted': 'امضای رمزنگاری‌شده',
+    'add_name': 'افزودن نام در پیام OTP',
+    'test_mobile': 'شماره همراه آزمایشی',
     'correlation_id': 'شناسه پیگیری',
     'request_fingerprint': 'اثر انگشت درخواست',
     'phone_normalized': 'شماره همراه استاندارد',
