@@ -87,15 +87,11 @@ def reset_password_with_grant(*, verification_grant: str, password: str) -> User
         raise PasswordRecoveryError("درخواست بازیابی معتبر یا قابل استفاده نیست.")
 
     try:
-        user = (
-            User.objects.select_for_update()
-            .select_related("business")
-            .get(
-                pk=verified.user_id,
-                mobile=verified.mobile,
-                mobile_verified_at__isnull=False,
-                is_active=True,
-            )
+        user = User.objects.select_for_update().get(
+            pk=verified.user_id,
+            mobile=verified.mobile,
+            mobile_verified_at__isnull=False,
+            is_active=True,
         )
     except User.DoesNotExist as exc:
         raise PasswordRecoveryError("درخواست بازیابی معتبر یا قابل استفاده نیست.") from exc
