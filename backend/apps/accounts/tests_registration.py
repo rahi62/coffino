@@ -251,6 +251,69 @@ class SaasRegistrationApiTests(APITestCase):
         self.assertNotIn(other_branch.id, {row["id"] for row in branches.data})
 
 
+    def test_registered_owner_user_management_stays_inside_own_tenant(self):
+        other_business = Business.objects.create(name="Tenant Users B", deployment_type="SAAS")
+        other_branch = Branch.objects.create(business=other_business, name="Foreign")
+        other_user = User.objects.create_user(
+            username="foreign-cashier",
+            password="Foreign-Password-2026!",
+            business=other_business,
+            branch=other_branch,
+            role=User.Role.CASHIER,
+        )
+
+        registered = self.client.post("/api/v1/auth/register/", self.payload(), format="json")
+        self.assertEqual(registered.status_code, status.HTTP_201_CREATED)
+        owner = User.objects.get(pk=registered.data["user"]["id"])
+        own_branch = Branch.objects.get(pk=registered.data["branch"]["id"])
+        self.client.force_authenticate(owner)
+
+        own_create = self.client.post(
+            "/api/v1/settings/users/create/",
+            {
+                "username": "own-cashier",
+                "password": "Own-Cashier-2026!",
+                "role": User.Role.CASHIER,
+                "branch": own_branch.id,
+            },
+            format="json",
+        )
+        self.assertEqual(own_create.status_code, status.HTTP_201_CREATED)
+        created_user = User.objects.get(username="own-cashier")
+        self.assertEqual(created_user.business_id, owner.business_id)
+        self.assertEqual(created_user.branch_id, own_branch.id)
+
+        foreign_branch_create = self.client.post(
+            "/api/v1/settings/users/create/",
+            {
+                "username": "cross-tenant-user",
+                "password": "Cross-Tenant-2026!",
+                "role": User.Role.CASHIER,
+                "branch": other_branch.id,
+            },
+            format="json",
+        )
+        self.assertEqual(foreign_branch_create.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username="cross-tenant-user").exists())
+
+        foreign_reset = self.client.post(
+            f"/api/v1/settings/users/{other_user.id}/password/",
+            {"password": "Changed-Foreign-2027!"},
+            format="json",
+        )
+        self.assertEqual(foreign_reset.status_code, status.HTTP_403_FORBIDDEN)
+        other_user.refresh_from_db()
+        self.assertTrue(other_user.check_password("Foreign-Password-2026!"))
+
+        own_reset = self.client.post(
+            f"/api/v1/settings/users/{created_user.id}/password/",
+            {"password": "Changed-Own-2027!"},
+            format="json",
+        )
+        self.assertEqual(own_reset.status_code, status.HTTP_200_OK)
+        created_user.refresh_from_db()
+        self.assertTrue(created_user.check_password("Changed-Own-2027!"))
+
     def test_registered_owner_gets_owner_context_and_cannot_cross_tenant_boundaries(self):
         other_business = Business.objects.create(name="Tenant B", deployment_type="SAAS")
         other_branch = Branch.objects.create(
