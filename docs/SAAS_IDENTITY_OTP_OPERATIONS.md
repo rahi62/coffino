@@ -186,3 +186,27 @@ Rollback کد بعد از اجرای migrationهای additive معمولاً م�
 DRF throttling and OTP abuse controls use the same client-IP resolution policy.
 
 `CAF_INO_NUM_PROXIES` must equal the number of trusted reverse proxies between the browser and Django. A value of `0` ignores forwarded IP headers and uses `REMOTE_ADDR`. Do not increase this value without verifying the actual Coolify/proxy chain, because trusting untrusted forwarded headers weakens IP-based throttling.
+
+
+## Django Admin — Global OTP Provider
+
+ParsGreen OTP can now be managed globally from Django Admin through **Platform OTP Provider Config**.
+
+This configuration is platform-level; it is intentionally separate from the branch-level `SmsProviderConfig` used for restaurant/cafe operational notifications.
+
+Precedence is deterministic:
+
+1. If no `PlatformOtpProviderConfig` row exists, existing environment variables remain the fallback.
+2. Once the global database row exists, it becomes authoritative.
+3. A disabled row disables platform OTP even if the old env toggle is enabled.
+4. An enabled row with missing/decryption-failed credentials fails closed; it never falls back silently to env secrets.
+
+Security behavior:
+
+- API Key and Signature are encrypted at rest using the existing Cafino secret-encryption helper.
+- Existing secret values are never rendered back into the Admin form.
+- Leaving a secret field blank preserves the stored value.
+- Only Django superusers can view or modify the global OTP provider configuration.
+- The Admin action **ارسال OTP آزمایشی به شماره تست** validates actual provider delivery without exposing the generated OTP code in the panel or logs.
+
+Important: encryption currently derives from `DJANGO_SECRET_KEY`. Rotating that key requires re-entering encrypted provider credentials afterward.

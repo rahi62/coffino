@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.accounts.models import OtpChallenge, User
+from apps.accounts.models import OtpChallenge, PlatformOtpProviderConfig, User
 from apps.accounts.otp import (
     OtpCooldownError,
     OtpDeliveryError,
@@ -16,7 +16,7 @@ from apps.accounts.otp import (
     request_otp,
     verify_otp,
 )
-from apps.accounts.otp_providers import ParsGreenOtpSender
+from apps.accounts.otp_providers import DisabledOtpSender, ParsGreenOtpSender, get_otp_sender
 from apps.businesses.models import Business
 
 
@@ -220,3 +220,74 @@ class ParsGreenOtpSenderTests(TestCase):
             )
 
         self.assertNotIn("SECRET_PROVIDER_DETAIL", str(raised.exception))
+
+
+
+class PlatformOtpProviderConfigTests(TestCase):
+    def test_secrets_are_encrypted_and_never_stored_as_plaintext(self):
+        config = PlatformOtpProviderConfig(provider=PlatformOtpProviderConfig.Provider.PARSGREEN)
+        config.set_api_key("plain-api-key")
+        config.set_signature("plain-signature")
+        config.full_clean()
+        config.save()
+
+        self.assertNotIn("plain-api-key", config.api_key_encrypted)
+        self.assertNotIn("plain-signature", config.signature_encrypted)
+        self.assertEqual(config.get_api_key(), "plain-api-key")
+        self.assertEqual(config.get_signature(), "plain-signature")
+        self.assertTrue(config.credentials_configured)
+
+    @override_settings(
+        CAF_INO_OTP_SENDER="apps.accounts.otp_providers.DisabledOtpSender",
+        PARSGREEN_API_KEY="env-key",
+        PARSGREEN_SIGNATURE="env-signature",
+    )
+    def test_enabled_database_config_overrides_disabled_env_sender(self):
+        config = PlatformOtpProviderConfig.objects.create(
+            provider=PlatformOtpProviderConfig.Provider.PARSGREEN,
+            enabled=True,
+            api_base_url="https://sms.parsgreen.ir",
+        )
+        config.set_api_key("db-key")
+        config.set_signature("db-signature")
+        config.save()
+
+        sender = get_otp_sender()
+        self.assertIsInstance(sender, ParsGreenOtpSender)
+        self.assertEqual(sender.config.api_key, "db-key")
+        self.assertEqual(sender.config.signature, "db-signature")
+
+    @override_settings(
+        CAF_INO_OTP_SENDER="apps.accounts.otp_providers.ParsGreenOtpSender",
+        PARSGREEN_API_KEY="env-key",
+        PARSGREEN_SIGNATURE="env-signature",
+    )
+    def test_disabled_database_row_fails_closed_even_when_env_is_enabled(self):
+        PlatformOtpProviderConfig.objects.create(
+            provider=PlatformOtpProviderConfig.Provider.PARSGREEN,
+            enabled=False,
+        )
+        self.assertIsInstance(get_otp_sender(), DisabledOtpSender)
+
+    @override_settings(
+        CAF_INO_OTP_SENDER="apps.accounts.otp_providers.ParsGreenOtpSender",
+        PARSGREEN_API_KEY="env-key",
+        PARSGREEN_SIGNATURE="env-signature",
+    )
+    def test_missing_database_row_keeps_backward_compatible_env_fallback(self):
+        sender = get_otp_sender()
+        self.assertIsInstance(sender, ParsGreenOtpSender)
+        self.assertEqual(sender.config.api_key, "env-key")
+        self.assertEqual(sender.config.signature, "env-signature")
+
+    @override_settings(
+        CAF_INO_OTP_SENDER="apps.accounts.otp_providers.DisabledOtpSender",
+    )
+    def test_enabled_database_row_with_missing_secret_fails_closed(self):
+        config = PlatformOtpProviderConfig.objects.create(
+            provider=PlatformOtpProviderConfig.Provider.PARSGREEN,
+            enabled=True,
+        )
+        config.set_api_key("configured-key")
+        config.save()
+        self.assertIsInstance(get_otp_sender(), DisabledOtpSender)

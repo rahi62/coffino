@@ -130,3 +130,51 @@ class ManagerOverrideCredential(models.Model):
     pin_hash=models.CharField(max_length=200)
     is_active=models.BooleanField(default=True)
     updated_at=models.DateTimeField(auto_now=True)
+
+
+
+class PlatformOtpProviderConfig(TimeStampedModel):
+    class Provider(models.TextChoices):
+        PARSGREEN = "PARSGREEN", "ParsGreen"
+
+    provider = models.CharField(
+        max_length=32,
+        choices=Provider.choices,
+        default=Provider.PARSGREEN,
+        unique=True,
+    )
+    enabled = models.BooleanField(default=False)
+    api_base_url = models.URLField(default="https://sms.parsgreen.ir")
+    api_key_encrypted = models.TextField(blank=True)
+    signature_encrypted = models.TextField(blank=True)
+    add_name = models.BooleanField(default=True)
+    timeout_seconds = models.PositiveIntegerField(default=10)
+    test_mobile = models.CharField(max_length=11, blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.test_mobile:
+            self.test_mobile = normalize_iran_mobile(self.test_mobile)
+
+    def set_api_key(self, value):
+        from apps.notifications.crypto import encrypt_secret
+        self.api_key_encrypted = encrypt_secret(value)
+
+    def get_api_key(self):
+        from apps.notifications.crypto import decrypt_secret
+        return decrypt_secret(self.api_key_encrypted)
+
+    def set_signature(self, value):
+        from apps.notifications.crypto import encrypt_secret
+        self.signature_encrypted = encrypt_secret(value)
+
+    def get_signature(self):
+        from apps.notifications.crypto import decrypt_secret
+        return decrypt_secret(self.signature_encrypted)
+
+    @property
+    def credentials_configured(self):
+        return bool(self.get_api_key() and self.get_signature())
+
+    def __str__(self):
+        return f"OTP Provider — {self.get_provider_display()}"
