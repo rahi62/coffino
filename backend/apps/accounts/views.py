@@ -15,8 +15,15 @@ from .phone import mask_mobile
 from .tokens import issue_token_pair
 from .otp_providers import OtpDeliveryError
 from .registration import RegistrationError, register_saas_owner
-from .serializers import RegistrationOtpRequestSerializer, OtpVerifySerializer, SaasRegistrationSerializer
-from .throttles import OtpRequestThrottle, OtpVerifyThrottle, RegistrationThrottle
+from .recovery import PasswordRecoveryError, request_password_recovery, reset_password_with_grant
+from .serializers import (
+    RegistrationOtpRequestSerializer,
+    OtpVerifySerializer,
+    SaasRegistrationSerializer,
+    PasswordRecoveryRequestSerializer,
+    PasswordResetSerializer,
+)
+from .throttles import OtpRequestThrottle, OtpVerifyThrottle, RegistrationThrottle, PasswordRecoveryThrottle
 
 
 def _request_ip(request):
@@ -158,3 +165,59 @@ def login_otp_verify(request):
     except (OtpError, User.DoesNotExist) as exc:
         raise ValidationError({"detail": "کد ورود معتبر یا قابل استفاده نیست."}) from exc
     return Response(pair)
+
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+@throttle_classes([PasswordRecoveryThrottle])
+def password_forgot(request):
+    serializer = PasswordRecoveryRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    result = request_password_recovery(
+        identifier=serializer.validated_data["identifier"],
+        request_ip=_request_ip(request),
+    )
+    otp = result.otp
+    return Response({
+        "detail": "اگر حساب فعالی با این مشخصات وجود داشته باشد، راهنمای بازیابی ارسال می‌شود.",
+        "challenge_id": otp.challenge_id if otp else uuid4(),
+        "expires_at": otp.expires_at if otp else timezone.now() + timedelta(seconds=settings.CAF_INO_OTP_TTL_SECONDS),
+        "retry_after_seconds": settings.CAF_INO_OTP_RESEND_SECONDS,
+    })
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+@throttle_classes([PasswordRecoveryThrottle])
+def password_otp_verify(request):
+    serializer = OtpVerifySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    try:
+        grant = verify_otp(
+            challenge_id=serializer.validated_data["challenge_id"],
+            code=serializer.validated_data["code"],
+            expected_purpose=OtpChallenge.Purpose.PASSWORD_RECOVERY,
+        )
+    except OtpError as exc:
+        raise ValidationError({"detail": "کد بازیابی معتبر یا قابل استفاده نیست."}) from exc
+    return Response({"detail": "کد بازیابی تأیید شد.", "verification_grant": grant})
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+@throttle_classes([PasswordRecoveryThrottle])
+def password_reset(request):
+    serializer = PasswordResetSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    try:
+        reset_password_with_grant(
+            verification_grant=serializer.validated_data["verification_grant"],
+            password=serializer.validated_data["password"],
+        )
+    except PasswordRecoveryError as exc:
+        raise ValidationError({"detail": str(exc)}) from exc
+    return Response({"ok": True, "detail": "گذرواژه با موفقیت تغییر کرد. دوباره وارد شوید."})

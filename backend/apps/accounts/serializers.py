@@ -66,3 +66,20 @@ class SaasRegistrationSerializer(StrictSerializer):
                 {"password_confirmation": "گذرواژه و تکرار آن باید یکسان باشند."}
             )
         return attrs
+
+
+class PasswordRecoveryRequestSerializer(StrictSerializer):
+    identifier = serializers.CharField(max_length=254, trim_whitespace=True)
+
+
+class PasswordResetSerializer(StrictSerializer):
+    verification_grant = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+    password_confirmation = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_confirmation"]:
+            raise serializers.ValidationError(
+                {"password_confirmation": "گذرواژه و تکرار آن باید یکسان باشند."}
+            )
+        return attrs
