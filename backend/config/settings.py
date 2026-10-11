@@ -68,6 +68,15 @@ DATABASES={'default':dj_database_url.config(
     conn_health_checks=True,
 )}
 
+cache_url=os.getenv('DJANGO_CACHE_URL','').strip()
+CACHES={
+ 'default':(
+  {'BACKEND':'django.core.cache.backends.redis.RedisCache','LOCATION':cache_url}
+  if cache_url else
+  {'BACKEND':'django.core.cache.backends.locmem.LocMemCache','LOCATION':'cafino-local-cache'}
+ )
+}
+
 AUTH_USER_MODEL='accounts.User'
 LANGUAGE_CODE='fa'
 LANGUAGES=(
@@ -103,15 +112,39 @@ SECURE_HSTS_PRELOAD=False
 
 REST_FRAMEWORK={
  'DEFAULT_PERMISSION_CLASSES':['rest_framework.permissions.IsAuthenticated'],
- 'DEFAULT_AUTHENTICATION_CLASSES':['rest_framework_simplejwt.authentication.JWTAuthentication','rest_framework.authentication.SessionAuthentication'],
+ 'DEFAULT_AUTHENTICATION_CLASSES':['apps.accounts.authentication.CafinoJWTAuthentication','rest_framework.authentication.SessionAuthentication'],
  'DEFAULT_FILTER_BACKENDS':['django_filters.rest_framework.DjangoFilterBackend','rest_framework.filters.SearchFilter'],
  'DEFAULT_SCHEMA_CLASS':'drf_spectacular.openapi.AutoSchema',
- 'DEFAULT_THROTTLE_RATES':{'public_menu':'120/min','online_order':'20/min','ops_device':'60/min'},
+ 'NUM_PROXIES':int(os.getenv('CAF_INO_NUM_PROXIES','0')),
+ 'DEFAULT_THROTTLE_RATES':{
+  'public_menu':'120/min','online_order':'20/min','ops_device':'60/min',
+  'auth_registration':'5/hour','auth_login':'10/min','auth_otp_request':'5/hour',
+  'auth_otp_verify':'20/hour','auth_recovery':'5/hour',
+ },
 }
 SIMPLE_JWT={
  'ACCESS_TOKEN_LIFETIME':timedelta(days=1),
  'REFRESH_TOKEN_LIFETIME':timedelta(days=1),
 }
+PARSGREEN_API_BASE_URL=os.getenv('PARSGREEN_API_BASE_URL','https://sms.parsgreen.ir').strip()
+PARSGREEN_API_KEY=os.getenv('PARSGREEN_API_KEY','')
+PARSGREEN_SIGNATURE=os.getenv('PARSGREEN_SIGNATURE','')
+PARSGREEN_OTP_ADD_NAME=os.getenv('PARSGREEN_OTP_ADD_NAME','1')=='1'
+PARSGREEN_TIMEOUT_SECONDS=int(os.getenv('PARSGREEN_TIMEOUT_SECONDS','10'))
+PARSGREEN_OTP_ENABLED=os.getenv('PARSGREEN_OTP_ENABLED','0')=='1'
+CAF_INO_OTP_SENDER=os.getenv(
+ 'CAF_INO_OTP_SENDER',
+ 'apps.accounts.otp_providers.ParsGreenOtpSender' if PARSGREEN_OTP_ENABLED else (
+  'apps.accounts.otp_providers.FakeOtpSender' if DEBUG else 'apps.accounts.otp_providers.DisabledOtpSender'
+ ),
+)
+CAF_INO_OTP_TTL_SECONDS=int(os.getenv('CAF_INO_OTP_TTL_SECONDS','300'))
+CAF_INO_OTP_GRANT_TTL_SECONDS=int(os.getenv('CAF_INO_OTP_GRANT_TTL_SECONDS','300'))
+CAF_INO_OTP_RESEND_SECONDS=int(os.getenv('CAF_INO_OTP_RESEND_SECONDS','60'))
+CAF_INO_OTP_MAX_ATTEMPTS=int(os.getenv('CAF_INO_OTP_MAX_ATTEMPTS','5'))
+CAF_INO_OTP_SEND_LIMIT_PER_HOUR=int(os.getenv('CAF_INO_OTP_SEND_LIMIT_PER_HOUR','5'))
+CAF_INO_OTP_VERIFY_LIMIT_PER_HOUR=int(os.getenv('CAF_INO_OTP_VERIFY_LIMIT_PER_HOUR','20'))
+CAF_INO_OTP_RETENTION_DAYS=int(os.getenv('CAF_INO_OTP_RETENTION_DAYS','7'))
 CELERY_BROKER_URL=os.getenv('CELERY_BROKER_URL') or os.getenv('REDIS_URL') or 'redis://127.0.0.1:6379/0'
 CELERY_TASK_SERIALIZER='json'
 CELERY_ACCEPT_CONTENT=['json']
@@ -126,6 +159,11 @@ CELERY_BEAT_SCHEDULE={
  },
  'prune-production-operations-history':{
   'task':'apps.operations.tasks.prune_operations_history',
+  'schedule':86400.0,
+  'options':{'expires':3600},
+ },
+ 'prune-expired-otp-challenges':{
+  'task':'apps.accounts.tasks.prune_otp_challenges',
   'schedule':86400.0,
   'options':{'expires':3600},
  },

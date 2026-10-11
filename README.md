@@ -8,6 +8,15 @@ Cafino is a modular hospitality management platform built with:
 
 The final build includes POS, orders, dining/tables, KDS, inventory/recipes, Lot/FEFO, production batches, purchasing, suppliers, cash shifts, expenses, management reporting, reservations, loyalty/wallet, gift cards, QR/online ordering, delivery/couriers, SMS/Push notifications, payment gateway flow, audit/permissions and local printing/backup.
 
+## Production
+
+Current production deployment is managed through Coolify:
+
+- Frontend: `https://cafeno.digitalafarin.ir`
+- Backend API: `https://cafenoapi.digitalafarin.ir`
+
+Release and environment guidance: `docs/COOLIFY_DEPLOYMENT.md`.
+
 ## Clean checkout requirement
 
 Use a clean directory for this release. Do not overlay it onto an older CoffeeSan/Coffino tree. The release gate intentionally rejects a stale `frontend/app` beside `frontend/src/app`.

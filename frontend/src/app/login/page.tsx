@@ -1,209 +1,93 @@
 "use client";
+import Link from "next/link";
+import {useEffect,useState} from "react";
+import {Coffee,Eye,EyeOff,KeyRound,ShieldCheck,UserRound} from "lucide-react";
+import OtpForm from "@/components/otp-form";
+import {localBootstrap,localBootstrapStatus} from "@/lib/api";
+import {loginWithOtp,loginWithPassword,requestLoginOtp} from "@/lib/auth";
 
-import {useEffect, useState} from "react";
-import {Coffee, Eye, EyeOff, Package, ShieldCheck, ShoppingCart, UsersRound} from "lucide-react";
-import {localBootstrap, localBootstrapStatus, login} from "@/lib/api";
+type PageMode="checking"|"login"|"setup";
+type LoginMethod="password"|"otp";
 
-const weekBars = [38, 56, 44, 72, 51, 66, 88];
-type LoginMode = "checking" | "login" | "setup";
+export default function Login(){
+ const [mode,setMode]=useState<PageMode>("checking");
+ const [method,setMethod]=useState<LoginMethod>("password");
+ const [notice,setNotice]=useState("");
+ const [busy,setBusy]=useState(false);const [error,setError]=useState("");
+ const [username,setUsername]=useState("");const [password,setPassword]=useState("");const [showPassword,setShowPassword]=useState(false);
+ const [mobile,setMobile]=useState("");const [challengeId,setChallengeId]=useState("");
+ const [businessName,setBusinessName]=useState("");const [branchName,setBranchName]=useState("شعبه اصلی");const [businessType,setBusinessType]=useState("CAFE");
+ const [ownerUsername,setOwnerUsername]=useState("owner");const [ownerEmail,setOwnerEmail]=useState("");const [ownerPassword,setOwnerPassword]=useState("");const [ownerPasswordConfirmation,setOwnerPasswordConfirmation]=useState("");
 
-export default function Login() {
-  const [mode, setMode] = useState<LoginMode>("checking");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+ useEffect(()=>{
+   const params=new URLSearchParams(location.search);
+   if(params.get("registered")==="1")setNotice("حساب کسب‌وکار با موفقیت ساخته شد. برای ادامه وارد شوید.");
+   else if(params.get("reset")==="1")setNotice("گذرواژه با موفقیت تغییر کرد. با گذرواژه جدید وارد شوید.");
+ },[]);
 
-  const [businessName, setBusinessName] = useState("");
-  const [branchName, setBranchName] = useState("شعبه اصلی");
-  const [businessType, setBusinessType] = useState("CAFE");
-  const [ownerUsername, setOwnerUsername] = useState("owner");
-  const [ownerEmail, setOwnerEmail] = useState("");
-  const [ownerPassword, setOwnerPassword] = useState("");
-  const [ownerPasswordConfirmation, setOwnerPasswordConfirmation] = useState("");
-  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
+ useEffect(()=>{let cancelled=false;const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));(async()=>{
+   const attempts=typeof window!=="undefined"&&Boolean((window as any).cafino)?60:1;
+   for(let i=0;i<attempts;i++)try{
+     const s=await localBootstrapStatus();if(cancelled)return;
+     setMode(s?.available&&s.needs_setup?"setup":"login");return;
+   }catch{if(i<attempts-1)await sleep(500);else if(!cancelled)setMode("login")}
+ })();return()=>{cancelled=true}},[]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-    async function detectFirstRun() {
-      const hasElectronBridge = typeof window !== "undefined" && Boolean((window as any).cafino);
-      const attempts = hasElectronBridge ? 60 : 1;
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-          const status = await localBootstrapStatus();
-          if (cancelled) return;
-          setMode(status?.available && status.needs_setup ? "setup" : "login");
-          return;
-        } catch {
-          if (attempt < attempts - 1) {
-            await sleep(500);
-            continue;
-          }
-          if (!cancelled) setMode("login");
-        }
-      }
-    }
-    detectFirstRun();
-    return () => { cancelled = true; };
-  }, []);
+ const run=async(fn:()=>Promise<void>)=>{setBusy(true);setError("");try{await fn()}catch(e:any){setError(e?.message||"ورود انجام نشد.")}finally{setBusy(false)}};
+ const passwordSubmit=(e:React.FormEvent)=>{e.preventDefault();void run(async()=>{await loginWithPassword(username.trim(),password);location.assign("/")})};
+ const otpRequest=()=>run(async()=>{const x=await requestLoginOtp(mobile);setChallengeId(x.challenge_id)});
+ const otpVerify=(code:string)=>run(async()=>{await loginWithOtp(challengeId,code);location.assign("/")});
+ const setupSubmit=(e:React.FormEvent)=>{e.preventDefault();void run(async()=>{
+   if(ownerPassword!==ownerPasswordConfirmation)throw new Error("تکرار گذرواژه یکسان نیست.");
+   await localBootstrap({business_name:businessName.trim(),branch_name:branchName.trim(),business_type:businessType,username:ownerUsername.trim(),email:ownerEmail.trim(),password:ownerPassword,password_confirmation:ownerPasswordConfirmation});
+   await loginWithPassword(ownerUsername.trim(),ownerPassword);location.assign("/");
+ })};
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!username.trim() || !password) {
-      setError("نام کاربری و رمز عبور را وارد کنید.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      await login(username.trim(), password);
-      location.assign("/");
-    } catch (cause: any) {
-      setError(cause?.message || "ورود انجام نشد. اطلاعات ورود را بررسی و دوباره تلاش کنید.");
-    } finally {
-      setBusy(false);
-    }
-  }
+ return <div className="fixed inset-0 z-50 flex min-h-screen overflow-hidden bg-[#f0ece6]">
+  <section className="flex w-full items-center justify-center overflow-y-auto bg-[#fffdf9] px-6 py-10 sm:px-10 lg:w-[48%] lg:min-w-[430px] lg:px-14">
+   <div className="w-full max-w-[380px]">
+    <div className="mb-8 flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-[#211711] text-white"><Coffee size={21}/></span><div><p className="text-lg font-black">کافینو</p><p className="text-xs text-[#8d8178]">مدیریت هوشمند پذیرایی</p></div></div>
 
-  async function submitSetup(event: React.FormEvent) {
-    event.preventDefault();
-    setError("");
-    const cleanBusiness = businessName.trim();
-    const cleanBranch = branchName.trim();
-    const cleanUsername = ownerUsername.trim();
-    if (!cleanBusiness || !cleanBranch || !cleanUsername) {
-      setError("نام کسب‌وکار، شعبه و نام کاربری مالک را کامل کنید.");
-      return;
-    }
-    if (ownerPassword.length < 12 || !/[A-Za-z]/.test(ownerPassword) || !/\d/.test(ownerPassword)) {
-      setError("رمز مالک باید حداقل ۱۲ کاراکتر و شامل حداقل یک حرف لاتین و یک عدد باشد.");
-      return;
-    }
-    if (ownerPassword !== ownerPasswordConfirmation) {
-      setError("تکرار رمز عبور با رمز مالک یکسان نیست.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await localBootstrap({
-        business_name: cleanBusiness,
-        branch_name: cleanBranch,
-        business_type: businessType,
-        username: cleanUsername,
-        email: ownerEmail.trim(),
-        password: ownerPassword,
-        password_confirmation: ownerPasswordConfirmation,
-      });
-      await login(cleanUsername, ownerPassword);
-      location.assign("/");
-    } catch (cause: any) {
-      const message = String(cause?.message || "راه‌اندازی اولیه انجام نشد.");
-      setError(message);
-      if (message.includes("already been initialized") || message.includes("setup is closed")) setMode("login");
-    } finally {
-      setBusy(false);
-    }
-  }
+    {mode==="checking"&&<div className="rounded-3xl border border-[#e6ddd3] bg-white p-6"><div className="mb-3 size-8 animate-pulse rounded-xl bg-[#b9792d]/20"/><b>در حال بررسی وضعیت ورود…</b></div>}
 
-  return <div className="fixed inset-0 z-50 flex min-h-screen overflow-hidden bg-[#f0ece6]">
-    <section className="flex w-full items-center justify-center overflow-y-auto bg-[#fffdf9] px-6 py-10 sm:px-10 lg:w-[46%] lg:min-w-[420px] lg:px-14">
-      <div className="w-full max-w-[360px]">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="grid size-11 place-items-center rounded-2xl bg-[#211711] text-xl text-white shadow-lg shadow-[#211711]/15"><Coffee size={21} aria-hidden="true" /></div>
-          <div><p className="text-lg font-black tracking-[-.4px] text-[#211711]">کافینو</p><p className="text-xs text-[#8d8178]">مدیریت هوشمند پذیرایی</p></div>
-        </div>
+    {mode==="login"&&<div>
+     <h1 className="text-3xl font-black text-[#211711]">خوش آمدید</h1><p className="mt-2 text-sm text-[#8d8178]">با گذرواژه یا کد یک‌بارمصرف وارد پنل شوید.</p>
+     {notice&&<div role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-900">{notice}</div>}
+     <div className="mt-6 grid grid-cols-2 rounded-xl bg-[#f2ece5] p-1">
+      <button onClick={()=>{setMethod("password");setChallengeId("");setError("")}} className={`rounded-lg px-3 py-2 text-sm font-bold ${method==="password"?"bg-white shadow-sm":"text-[#82756c]"}`}><UserRound size={16} className="ml-1 inline"/>گذرواژه</button>
+      <button onClick={()=>{setMethod("otp");setError("")}} className={`rounded-lg px-3 py-2 text-sm font-bold ${method==="otp"?"bg-white shadow-sm":"text-[#82756c]"}`}><KeyRound size={16} className="ml-1 inline"/>کد ورود</button>
+     </div>
 
-        {mode === "checking" && <div className="rounded-3xl border border-[#e6ddd3] bg-white p-6 shadow-sm">
-          <div className="mb-3 size-8 animate-pulse rounded-xl bg-[#b9792d]/20" />
-          <h1 className="text-xl font-black text-[#211711]">در حال آماده‌سازی کافینو…</h1>
-          <p className="mt-2 text-sm leading-6 text-[#8d8178]">وضعیت Backend و نصب اولیه بررسی می‌شود.</p>
-        </div>}
+     {method==="password"?<form onSubmit={passwordSubmit} className="mt-5 space-y-4">
+      <label className="block text-sm font-bold">نام کاربری<input autoFocus dir="ltr" autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} className="mt-2 h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-4 text-left outline-none focus:border-[#b9792d]"/></label>
+      <label className="block text-sm font-bold">گذرواژه<span className="relative mt-2 block"><input dir="ltr" autoComplete="current-password" type={showPassword?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} className="h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] py-0 pl-12 pr-4 text-left outline-none focus:border-[#b9792d]"/><button type="button" onClick={()=>setShowPassword(x=>!x)} className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center text-[#8d8178]" aria-label="نمایش یا پنهان کردن گذرواژه">{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></span></label>
+      <div className="flex justify-end"><Link href="/forgot-password" className="text-sm font-bold text-[#a46722]">گذرواژه را فراموش کرده‌ام</Link></div>
+      <button disabled={busy||!username.trim()||!password} className="h-12 w-full rounded-xl bg-[#211711] font-bold text-white disabled:opacity-50">{busy?"در حال ورود…":"ورود به پنل"}</button>
+     </form>:<div className="mt-5">
+      {!challengeId?<div className="space-y-4"><label className="block text-sm font-bold">شماره همراه تأییدشده<input autoFocus dir="ltr" inputMode="tel" value={mobile} onChange={e=>setMobile(e.target.value)} placeholder="09123456789" className="mt-2 h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-4 text-left outline-none focus:border-[#b9792d]"/></label><button onClick={()=>void otpRequest()} disabled={busy||!mobile.trim()} className="h-12 w-full rounded-xl bg-[#211711] font-bold text-white disabled:opacity-50">{busy?"در حال ارسال…":"ارسال کد ورود"}</button></div>:<OtpForm busy={busy} onSubmit={otpVerify} onResend={otpRequest} title="کد ورود"/>}
+     </div>}
 
-        {mode === "login" && <form onSubmit={submit} noValidate>
-          <div className="mb-8">
-            <h1 className="text-3xl font-black tracking-[-.7px] text-[#211711]">خوش آمدید</h1>
-            <p className="mt-2 text-sm text-[#8d8178]">برای ورود به پنل مدیریت، اطلاعات خود را وارد کنید.</p>
-          </div>
+     {error&&<div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+     <div className="mt-6 border-t border-[#eee6dc] pt-5 text-center text-sm text-[#8d8178]">هنوز حساب ندارید؟ <Link href="/register" className="font-black text-[#a46722]">ایجاد حساب کسب‌وکار</Link></div>
+     <div className="mt-4 flex items-center gap-2 text-xs text-[#8d8178]"><ShieldCheck size={16} className="text-[#b9792d]"/>دسترسی‌ها بر اساس کسب‌وکار، نقش و شعبه کنترل می‌شوند.</div>
+    </div>}
 
-          <div className="space-y-4">
-            <label className="block text-sm font-bold text-[#51453d]">نام کاربری
-              <input autoComplete="username" autoFocus className="mt-2 h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-4 text-left text-sm text-[#211711] outline-none transition focus:border-[#b9792d] focus:bg-white focus:ring-4 focus:ring-[#b9792d]/10" dir="ltr" value={username} onChange={(event) => { setUsername(event.target.value); setError(""); }} placeholder="نام کاربری" />
-            </label>
-            <label className="block text-sm font-bold text-[#51453d]">رمز عبور
-              <span className="relative mt-2 block">
-                <input autoComplete="current-password" className="h-12 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] py-0 pl-12 pr-4 text-left text-sm text-[#211711] outline-none transition focus:border-[#b9792d] focus:bg-white focus:ring-4 focus:ring-[#b9792d]/10" dir="ltr" type={showPassword ? "text" : "password"} value={password} onChange={(event) => { setPassword(event.target.value); setError(""); }} placeholder="رمز عبور" />
-                <button type="button" className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-lg text-[#8d8178] transition hover:bg-[#eee6dc] hover:text-[#211711]" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "پنهان‌کردن رمز عبور" : "نمایش رمز عبور"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
-              </span>
-            </label>
-          </div>
-
-          {error && <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">{error}</div>}
-          <button className="mt-6 h-12 w-full rounded-xl bg-[#211711] px-4 text-sm font-bold text-white shadow-lg shadow-[#211711]/15 transition hover:bg-[#3b2b20] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy} type="submit">{busy ? "در حال ورود…" : "ورود به پنل"}</button>
-          <div className="mt-5 flex items-center gap-2 text-xs leading-5 text-[#8d8178]"><ShieldCheck size={16} className="shrink-0 text-[#b9792d]" /><span>دسترسی شما بر اساس نقش و شعبهٔ فعال کنترل می‌شود.</span></div>
-        </form>}
-
-        {mode === "setup" && <form onSubmit={submitSetup} noValidate>
-          <div className="mb-6">
-            <span className="inline-flex rounded-full bg-[#f6eadb] px-3 py-1 text-xs font-black text-[#a46722]">راه‌اندازی اولیه Local</span>
-            <h1 className="mt-3 text-3xl font-black tracking-[-.7px] text-[#211711]">کافینو را آماده کنید</h1>
-            <p className="mt-2 text-sm leading-6 text-[#8d8178]">این مرحله فقط روی دیتابیس کاملاً تازه فعال است و اولین کسب‌وکار، شعبه و حساب مالک را می‌سازد.</p>
-          </div>
-
-          <div className="grid gap-3">
-            <label className="block text-sm font-bold text-[#51453d]">نام کسب‌وکار
-              <input autoFocus className="mt-1.5 h-11 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-3 outline-none focus:border-[#b9792d] focus:bg-white" value={businessName} onChange={(e)=>{setBusinessName(e.target.value);setError("")}} placeholder="مثلاً کافه رکسان" />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm font-bold text-[#51453d]">شعبه
-                <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-3 outline-none focus:border-[#b9792d] focus:bg-white" value={branchName} onChange={(e)=>{setBranchName(e.target.value);setError("")}} />
-              </label>
-              <label className="block text-sm font-bold text-[#51453d]">نوع مجموعه
-                <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-2 outline-none focus:border-[#b9792d] focus:bg-white" value={businessType} onChange={(e)=>setBusinessType(e.target.value)}>
-                  <option value="CAFE">کافه</option><option value="RESTAURANT">رستوران</option><option value="FAST_FOOD">فست‌فود</option><option value="BAKERY">نانوایی/قنادی</option><option value="CATERING">کترینگ</option>
-                </select>
-              </label>
-            </div>
-            <label className="block text-sm font-bold text-[#51453d]">نام کاربری مالک
-              <input autoComplete="username" dir="ltr" className="mt-1.5 h-11 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-3 text-left outline-none focus:border-[#b9792d] focus:bg-white" value={ownerUsername} onChange={(e)=>{setOwnerUsername(e.target.value);setError("")}} />
-            </label>
-            <label className="block text-sm font-bold text-[#51453d]">ایمیل مالک <span className="font-normal text-[#a39890]">(اختیاری)</span>
-              <input autoComplete="email" dir="ltr" type="email" className="mt-1.5 h-11 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-3 text-left outline-none focus:border-[#b9792d] focus:bg-white" value={ownerEmail} onChange={(e)=>setOwnerEmail(e.target.value)} placeholder="owner@example.com" />
-            </label>
-            <label className="block text-sm font-bold text-[#51453d]">رمز مالک
-              <span className="relative mt-1.5 block">
-                <input autoComplete="new-password" dir="ltr" type={showOwnerPassword?"text":"password"} className="h-11 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] py-0 pl-11 pr-3 text-left outline-none focus:border-[#b9792d] focus:bg-white" value={ownerPassword} onChange={(e)=>{setOwnerPassword(e.target.value);setError("")}} placeholder="حداقل ۱۲ کاراکتر" />
-                <button type="button" className="absolute left-1 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-lg text-[#8d8178]" onClick={()=>setShowOwnerPassword(v=>!v)} aria-label="نمایش یا پنهان کردن رمز">{showOwnerPassword?<EyeOff size={17}/>:<Eye size={17}/>}</button>
-              </span>
-            </label>
-            <label className="block text-sm font-bold text-[#51453d]">تکرار رمز مالک
-              <input autoComplete="new-password" dir="ltr" type={showOwnerPassword?"text":"password"} className="mt-1.5 h-11 w-full rounded-xl border border-[#e6ddd3] bg-[#faf7f2] px-3 text-left outline-none focus:border-[#b9792d] focus:bg-white" value={ownerPasswordConfirmation} onChange={(e)=>{setOwnerPasswordConfirmation(e.target.value);setError("")}} />
-            </label>
-          </div>
-
-          {error && <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm leading-6 text-red-800">{error}</div>}
-          <button className="mt-5 h-12 w-full rounded-xl bg-[#211711] px-4 text-sm font-bold text-white shadow-lg shadow-[#211711]/15 transition hover:bg-[#3b2b20] disabled:cursor-not-allowed disabled:opacity-60" disabled={busy} type="submit">{busy?"در حال ساخت حساب مالک…":"ساخت کافینو و ورود"}</button>
-          <div className="mt-4 flex items-start gap-2 rounded-xl bg-[#f7f3ee] p-3 text-xs leading-5 text-[#75685f]"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-[#b9792d]" /><span>پس از ساخت اولین حساب، این مسیر برای همین دیتابیس برای همیشه بسته می‌شود.</span></div>
-        </form>}
-      </div>
-    </section>
-
-    <aside className="relative hidden flex-1 overflow-hidden bg-[#ede7df] p-8 lg:block">
-      <div className="absolute inset-0 opacity-50" style={{backgroundImage: "radial-gradient(circle, rgba(58,43,32,.16) 1px, transparent 1px)", backgroundSize: "22px 22px"}} />
-      <div className="relative mx-auto flex h-full max-w-[660px] flex-col justify-center gap-3">
-        <div className="grid grid-cols-[1.15fr_1fr] gap-3">
-          <article className="rounded-3xl bg-[#211711] p-5 text-white shadow-xl shadow-[#211711]/10"><div className="mb-4 flex items-center gap-2 text-xs font-bold text-white/55"><span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_10px_#4ade80]" />سامانه فعال</div><p className="font-mono text-2xl font-black tracking-[.16em]">۱۲:۴۵:۲۸</p></article>
-          <article className="rounded-3xl border border-[#e6ddd3] bg-white p-5"><p className="text-xs font-bold text-[#8d8178]">فروش امروز</p><p className="mt-2 text-2xl font-black tracking-[-1px] text-[#211711]">۲٬۵۴۱٬۰۰۰</p><p className="mt-1 text-xs font-bold text-emerald-600">↑ ۱۲٪ نسبت به دیروز</p></article>
-        </div>
-        <article className="rounded-3xl border border-[#e6ddd3] bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-black text-[#211711]">عملکرد هفته</h2><span className="rounded-full bg-[#f7f0e8] px-3 py-1 text-xs font-bold text-[#b9792d]">۷ روز</span></div><div className="flex h-16 items-end gap-1.5">{weekBars.map((height, index) => <span className={index === weekBars.length - 1 ? "flex-1 rounded-t-md bg-[#211711]" : index === 4 ? "flex-1 rounded-t-md bg-[#b9792d]" : "flex-1 rounded-t-md bg-[#e9dfd3]"} key={`${height}-${index}`} style={{height: `${height}%`}} />)}</div><div className="mt-2 flex justify-between text-[10px] font-bold text-[#9b9087]"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div></article>
-        <div className="grid grid-cols-3 gap-3"><Metric icon={<ShoppingCart size={19} />} label="سفارش" value="۸۵" detail="امروز" color="bg-[#b9792d]" /><Metric icon={<UsersRound size={19} />} label="مشتری" value="۱۲" detail="فعال" color="bg-[#4976a6]" /><Metric icon={<Package size={19} />} label="کم‌موجودی" value="۲" detail="آیتم" color="bg-[#8a5b3d]" /></div>
-        <article className="rounded-3xl border border-[#e6ddd3] bg-white p-5"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-black text-[#211711]">روند فروش</h2><span className="text-xs font-bold text-emerald-600">↑ ۱۲٪</span></div><svg viewBox="0 0 300 66" className="h-16 w-full overflow-visible" aria-label="روند افزایشی فروش" role="img"><defs><linearGradient id="login-sales-area" x1="0" x2="0" y1="0" y2="1"><stop stopColor="#b9792d" stopOpacity=".24" /><stop offset="1" stopColor="#b9792d" stopOpacity="0" /></linearGradient></defs><path d="M0,55 C35,49 52,54 82,34 C110,14 137,39 166,25 C196,10 220,30 248,16 C266,7 284,12 300,5 L300,66 L0,66Z" fill="url(#login-sales-area)" /><path d="M0,55 C35,49 52,54 82,34 C110,14 137,39 166,25 C196,10 220,30 248,16 C266,7 284,12 300,5" fill="none" stroke="#b9792d" strokeLinecap="round" strokeWidth="3" /></svg></article>
-      </div>
-    </aside>
-  </div>;
-}
-
-function Metric({icon, label, value, detail, color}: {icon: React.ReactNode; label: string; value: string; detail: string; color: string}) {
-  return <article className={`rounded-2xl p-4 text-center text-white shadow-lg ${color}`}><div className="mx-auto mb-2 grid size-8 place-items-center rounded-xl bg-white/15">{icon}</div><p className="text-[11px] font-bold text-white/70">{label}</p><p className="mt-1 text-2xl font-black">{value}</p><p className="text-[10px] text-white/65">{detail}</p></article>;
+    {mode==="setup"&&<form onSubmit={setupSubmit} className="space-y-3">
+      <div className="mb-5"><span className="rounded-full bg-[#f6eadb] px-3 py-1 text-xs font-black text-[#a46722]">راه‌اندازی اولیه Local</span><h1 className="mt-3 text-2xl font-black">نصب محلی را آماده کنید</h1><p className="mt-2 text-sm text-[#8d8178]">فقط برای دیتابیس تازه Local فعال است.</p></div>
+      <input autoFocus placeholder="نام کسب‌وکار" value={businessName} onChange={e=>setBusinessName(e.target.value)} className="h-11 w-full rounded-xl border px-3"/>
+      <div className="grid grid-cols-2 gap-2"><input placeholder="شعبه اصلی" value={branchName} onChange={e=>setBranchName(e.target.value)} className="h-11 rounded-xl border px-3"/><select value={businessType} onChange={e=>setBusinessType(e.target.value)} className="h-11 rounded-xl border px-2"><option value="CAFE">کافه</option><option value="RESTAURANT">رستوران</option><option value="FAST_FOOD">فست‌فود</option><option value="BAKERY">بیکری</option></select></div>
+      <input dir="ltr" placeholder="نام کاربری مالک" value={ownerUsername} onChange={e=>setOwnerUsername(e.target.value)} className="h-11 w-full rounded-xl border px-3 text-left"/>
+      <input dir="ltr" type="email" placeholder="ایمیل (اختیاری)" value={ownerEmail} onChange={e=>setOwnerEmail(e.target.value)} className="h-11 w-full rounded-xl border px-3 text-left"/>
+      <input dir="ltr" type="password" placeholder="گذرواژه مالک" value={ownerPassword} onChange={e=>setOwnerPassword(e.target.value)} className="h-11 w-full rounded-xl border px-3 text-left"/>
+      <input dir="ltr" type="password" placeholder="تکرار گذرواژه" value={ownerPasswordConfirmation} onChange={e=>setOwnerPasswordConfirmation(e.target.value)} className="h-11 w-full rounded-xl border px-3 text-left"/>
+      {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+      <button disabled={busy} className="h-12 w-full rounded-xl bg-[#211711] font-bold text-white disabled:opacity-50">{busy?"در حال ساخت…":"ساخت نصب محلی و ورود"}</button>
+    </form>}
+   </div>
+  </section>
+  <aside className="relative hidden flex-1 overflow-hidden bg-[#211711] p-10 text-white lg:flex lg:items-center">
+   <div className="absolute inset-0 opacity-20" style={{backgroundImage:"radial-gradient(circle, #fff 1px, transparent 1px)",backgroundSize:"24px 24px"}}/>
+   <div className="relative mx-auto max-w-xl"><span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-[#dfbd93]">Hospitality OS</span><h2 className="mt-5 text-5xl font-black leading-[1.25]">فروش، سالن، آشپزخانه و مدیریت؛ یکپارچه.</h2><p className="mt-5 max-w-lg text-base leading-8 text-white/65">کافینو عملیات روزانه کافه و رستوران را از سفارش تا انبار و گزارش در یک محیط واحد نگه می‌دارد.</p><div className="mt-8 grid grid-cols-3 gap-3">{["POS و سفارش","انبار و خرید","گزارش مدیریتی"].map(x=><div key={x} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm font-bold">{x}</div>)}</div></div>
+  </aside>
+ </div>;
 }

@@ -1,3 +1,5 @@
+> **SUPERSEDED FOR CURRENT PRODUCTION:** Cafino production has moved to Coolify. Keep this document only as historical Railway guidance. Use `docs/COOLIFY_DEPLOYMENT.md` for the active release process.
+
 # Cafino Web/SaaS on Railway
 
 Cafino is deployed from this monorepo as separate Railway services. Keep PostgreSQL and Redis private; only Backend and Frontend need public domains.

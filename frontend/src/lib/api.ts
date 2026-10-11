@@ -1,13 +1,17 @@
 import { t, userMessage } from "@/lib/i18n";
+import {
+  clearSession,
+  getAccessToken,
+  loginWithPassword,
+  refreshSession,
+  setAccessToken,
+} from "@/lib/auth";
 
-const base=process.env.NEXT_PUBLIC_API_URL || "/api/v1";
-const tokenKey="cafino_access";
-export function getToken(){if(typeof window==="undefined")return null;return localStorage.getItem(tokenKey)}
-export function setToken(t:string){localStorage.setItem(tokenKey,t)}
-export function clearToken(){localStorage.removeItem(tokenKey)}
-export async function login(username:string,password:string){
- let r:Response;try{r=await fetch((process.env.NEXT_PUBLIC_API_ROOT||"")+"/api/token/",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});}catch{throw new Error(t("error.network"));}if(!r.ok)throw new Error("نام کاربری یا رمز عبور نادرست است.");const d=await r.json();setToken(d.access);return d;
-}
+const base=process.env.NEXT_PUBLIC_API_URL || (process.env.NEXT_PUBLIC_API_ROOT||"")+"/api/v1";
+export function getToken(){return getAccessToken()}
+export function setToken(token:string){setAccessToken(token)}
+export function clearToken(){clearSession()}
+export async function login(username:string,password:string){return await loginWithPassword(username,password)}
 
 export type LocalBootstrapStatus={available:boolean;needs_setup:boolean};
 export type LocalBootstrapInput={business_name:string;branch_name:string;username:string;email?:string;password:string;password_confirmation:string;business_type?:string};
@@ -61,8 +65,38 @@ async function authorizeLocalPos(path:string,init?:RequestInit):Promise<RequestI
 
 export async function api<T>(path:string, init?:RequestInit):Promise<T>{
  const prepared=await authorizeLocalPos(path,init);
- const token=getToken();let r:Response;try{r=await fetch(`${base}${path}`,{...prepared,headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`} :{}),...(prepared?.headers||{})},cache:"no-store"});}catch(error){if(error instanceof Error&&error.message&&!error.message.includes("fetch"))throw error;throw new Error(t("error.network"));}
- if(r.status===401){clearToken();if(typeof window!=="undefined" && !location.pathname.startsWith("/login"))location.replace("/login");throw new Error(t("error.unauthorized"))}
+ const send=async(token:string|null)=>{
+   try{
+     return await fetch(`${base}${path}`,{
+       ...prepared,
+       headers:{
+         "Content-Type":"application/json",
+         ...(token?{Authorization:`Bearer ${token}`}:{}),
+         ...(prepared?.headers||{}),
+       },
+       cache:"no-store",
+     });
+   }catch(error){
+     if(error instanceof Error&&error.message&&!error.message.includes("fetch"))throw error;
+     throw new Error(t("error.network"));
+   }
+ };
+ let r=await send(getAccessToken());
+ if(r.status===401){
+   try{
+     const access=await refreshSession();
+     r=await send(access);
+   }catch{
+     clearSession();
+     if(typeof window!=="undefined"&&!location.pathname.startsWith("/login"))location.replace("/login");
+     throw new Error(t("error.unauthorized"));
+   }
+ }
+ if(r.status===401){
+   clearSession();
+   if(typeof window!=="undefined"&&!location.pathname.startsWith("/login"))location.replace("/login");
+   throw new Error(t("error.unauthorized"));
+ }
  if(!r.ok)throw new Error(userMessage(await r.text(),r.status));
  if(r.status===204)return undefined as T;
  const body=await r.text();

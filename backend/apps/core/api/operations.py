@@ -10,6 +10,9 @@ def me(request):
     return Response({
         "id":request.user.id,"username":request.user.username,"role":request.user.role,
         "business":request.user.business_id,"branch":request.user.branch_id,
+        "email":request.user.email,"mobile":request.user.mobile,
+        "mobile_verified":request.user.mobile_verified_at is not None,
+        "business_id":request.user.business_id,"branch_id":request.user.branch_id,
         "is_platform_admin":bool(request.user.is_superuser)
     })
 

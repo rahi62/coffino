@@ -6,7 +6,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN addgroup --system cafino && adduser --system --ingroup cafino cafino \
     && python manage.py collectstatic --noinput \
+    && chmod 755 /app/start-web.sh \
     && chown -R cafino:cafino /app
 USER cafino
 EXPOSE 8000
-CMD ["/bin/sh","-c","exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-60} --access-logfile - --error-logfile -"]
+CMD ["/bin/sh", "/app/start-web.sh"]

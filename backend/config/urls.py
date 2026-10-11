@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from apps.accounts.token_views import CafinoTokenObtainPairView as TokenObtainPairView, CafinoTokenRefreshView as TokenRefreshView
 from .admin_localization import localized_text, localize_admin
 from . import admin_localization_extra  # noqa: F401 - extends runtime localization maps before applying them
 
@@ -12,6 +12,7 @@ localize_admin()
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
