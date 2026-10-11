@@ -16,13 +16,15 @@ User = get_user_model()
 
 
 @override_settings(
-    CAF_INO_OTP_SENDER="apps.accounts.otp_providers.FakeOtpSender",
     CAF_INO_OTP_SEND_LIMIT_PER_HOUR=100,
 )
 class SaasRegistrationApiTests(APITestCase):
     PASSWORD = "Cafino-Owner-Strong-2026!"
 
     def setUp(self):
+        sender_patch = patch("apps.accounts.otp.get_otp_sender")
+        sender_patch.start().return_value.send.return_value = __import__("apps.accounts.otp_providers", fromlist=["OtpDeliveryResult"]).OtpDeliveryResult(accepted=True, provider_code="0")
+        self.addCleanup(sender_patch.stop)
         cache.clear()
         rate = patch("apps.accounts.throttles.RegistrationThrottle.rate", "100/hour", create=True)
         rate.start()
