@@ -7,6 +7,7 @@ from django.contrib.auth.admin import UserAdmin
 
 from .models import ManagerOverrideCredential, OtpChallenge, PlatformOtpProviderConfig, User
 from .otp_providers import OtpDeliveryError, sender_from_platform_config
+from .phone import normalize_iran_mobile
 
 
 @admin.register(User)
@@ -41,6 +42,12 @@ class OtpChallengeAdmin(admin.ModelAdmin):
 
 
 class PlatformOtpProviderConfigForm(forms.ModelForm):
+    test_mobile = forms.CharField(
+        label="شماره همراه آزمایشی",
+        required=False,
+        max_length=32,
+        help_text="نمونه: 09123456789",
+    )
     api_key = forms.CharField(
         label="API Key",
         required=False,
@@ -66,6 +73,10 @@ class PlatformOtpProviderConfigForm(forms.ModelForm):
             "timeout_seconds",
             "test_mobile",
         )
+
+    def clean_test_mobile(self):
+        value = self.cleaned_data.get("test_mobile", "")
+        return normalize_iran_mobile(value) if value else ""
 
     def save(self, commit=True):
         obj = super().save(commit=False)
