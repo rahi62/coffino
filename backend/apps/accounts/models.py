@@ -180,7 +180,7 @@ class PlatformOtpProviderConfig(TimeStampedModel):
 
     @property
     def credentials_configured(self):
-        return bool(self.get_api_key() and self.get_signature())
+        return bool(self.get_api_key())
 
     def __str__(self):
         return f"OTP Provider — {self.get_provider_display()}"
