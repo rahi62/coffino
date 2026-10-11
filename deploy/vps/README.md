@@ -1,3 +1,5 @@
+> **SUPERSEDED FOR CURRENT PRODUCTION:** the active Cafino deployment is managed in Coolify. This directory is retained for historical/native-VPS reference. Use `docs/COOLIFY_DEPLOYMENT.md` for the current release workflow.
+
 # Cafino native VPS deployment
 
 Cafino production on this VPS is intentionally **container-free**.
