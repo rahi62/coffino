@@ -22,7 +22,7 @@ export default function Dashboard(){
   const [updatedAt,setUpdatedAt]=useState<Date|null>(null);
 
   const load=useCallback(async()=>{
-    setRefreshing(true);
+    setRefreshing(true);setPermissions(null);
     setPermissionError("");setDashboardError("");setReadinessError("");
     try{
       // Permissions must resolve first: a failed permission request must never unlock actions.
