@@ -1,5 +1,7 @@
 # Cafino SaaS Identity and OTP Foundation Implementation Plan
 
+> **Release scope note (2026-10-11):** Tasks related to Customer Verification / online-order customer OTP are deferred. They are not acceptance criteria for the current Identity Foundation branch. Current scope ends at SaaS registration, login/session lifecycle, password recovery, tenant-boundary verification, frontend auth UX, and operational documentation.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver tenant-safe SaaS registration, ParsGreen-backed OTP verification, refresh-aware JWT authentication, password recovery, and customer mobile verification without breaking existing username/password users.

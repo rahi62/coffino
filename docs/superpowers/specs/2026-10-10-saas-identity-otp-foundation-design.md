@@ -4,6 +4,8 @@ Date: 2026-10-10
 
 Status: Approved conversational design, pending written-spec review
 
+> Release scope note (2026-10-11): Customer phone verification and customer-value enforcement described later in this design are deferred to a separate milestone. The current SaaS Identity Foundation release covers owner registration, dashboard authentication/OTP, JWT refresh/revocation, password recovery, tenant boundaries, and related frontend flows only.
+
 ## 1. Purpose
 
 This milestone establishes public SaaS registration, backward-compatible authentication, password recovery, and mobile verification for Cafino. It also introduces a platform-level ParsGreen OTP integration without coupling tenant operations to a specific SMS vendor.
