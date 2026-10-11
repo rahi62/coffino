@@ -2,6 +2,7 @@ import uuid
 
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -148,11 +149,16 @@ class PlatformOtpProviderConfig(TimeStampedModel):
     api_key_encrypted = models.TextField(blank=True)
     signature_encrypted = models.TextField(blank=True)
     add_name = models.BooleanField(default=True)
-    timeout_seconds = models.PositiveIntegerField(default=10)
+    timeout_seconds = models.PositiveIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(60)],
+    )
     test_mobile = models.CharField(max_length=11, blank=True)
 
     def clean(self):
         super().clean()
+        if self.api_base_url and not self.api_base_url.lower().startswith("https://"):
+            raise ValidationError({"api_base_url": "آدرس Provider باید با HTTPS باشد."})
         if self.test_mobile:
             self.test_mobile = normalize_iran_mobile(self.test_mobile)
 
