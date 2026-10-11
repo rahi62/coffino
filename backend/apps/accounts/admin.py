@@ -105,8 +105,8 @@ class PlatformOtpProviderConfigAdmin(admin.ModelAdmin):
             "description": "این تنظیمات Global است و به هیچ شعبه‌ای تعلق ندارد. با ایجاد این رکورد، تنظیمات DB بر env اولویت دارد.",
         }),
         ("Credentials", {
-            "fields": ("api_key", "signature", "credentials_state"),
-            "description": "Secret فعلی هرگز نمایش داده نمی‌شود. خالی گذاشتن یعنی مقدار قبلی حفظ شود.",
+            "fields": ("api_key", "credentials_state"),
+            "description": "برای OTP پارس‌گرین فقط API Key لازم است. مقدار ذخیره‌شده نمایش داده نمی‌شود؛ خالی بگذارید تا حفظ شود.",
         }),
         ("ارسال آزمایشی", {"fields": ("test_mobile",)}),
         ("Audit", {"fields": ("uuid", "created_at", "updated_at")}),

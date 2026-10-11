@@ -1,4 +1,3 @@
-import base64
 from dataclasses import dataclass
 from urllib.parse import urljoin
 
@@ -26,7 +25,6 @@ class OtpDeliveryResult:
 class ParsGreenRuntimeConfig:
     api_base_url: str
     api_key: str
-    signature: str
     add_name: bool
     timeout_seconds: int
 
@@ -50,7 +48,6 @@ def pars_green_env_config() -> ParsGreenRuntimeConfig:
     return ParsGreenRuntimeConfig(
         api_base_url=str(getattr(settings, "PARSGREEN_API_BASE_URL", "https://sms.parsgreen.ir")),
         api_key=str(getattr(settings, "PARSGREEN_API_KEY", "") or ""),
-        signature=str(getattr(settings, "PARSGREEN_SIGNATURE", "") or ""),
         add_name=bool(getattr(settings, "PARSGREEN_OTP_ADD_NAME", True)),
         timeout_seconds=int(getattr(settings, "PARSGREEN_TIMEOUT_SECONDS", 10)),
     )
@@ -78,14 +75,12 @@ def pars_green_db_config():
         return True, None
 
     api_key = row.get_api_key()
-    signature = row.get_signature()
-    if not api_key or not signature:
+    if not api_key:
         return True, None
 
     return True, ParsGreenRuntimeConfig(
         api_base_url=row.api_base_url,
         api_key=api_key,
-        signature=signature,
         add_name=row.add_name,
         timeout_seconds=row.timeout_seconds,
     )
@@ -97,12 +92,9 @@ class ParsGreenOtpSender(OtpSender):
 
     def send(self, *, mobile: str, code: str, correlation_id: str) -> OtpDeliveryResult:
         config = self.config
-        if not config.api_key or not config.signature:
+        if not config.api_key:
             raise OtpDeliveryError(OTP_DELIVERY_ERROR)
 
-        credentials = base64.b64encode(
-            f"{config.api_key}:{config.signature}".encode("utf-8")
-        ).decode("ascii")
         endpoint = urljoin(config.api_base_url.rstrip("/") + "/", "Apiv2/Message/SendOtp")
         try:
             response = post_json(
@@ -112,7 +104,7 @@ class ParsGreenOtpSender(OtpSender):
                     "SmsCode": code,
                     "AddName": config.add_name,
                 },
-                headers={"Authorization": f"Basic {credentials}"},
+                headers={"Authorization": f"basic apikey:{config.api_key}"},
                 timeout=config.timeout_seconds,
                 allow_private=False,
                 require_https=True,
@@ -139,7 +131,6 @@ def sender_from_platform_config(row) -> OtpSender:
         ParsGreenRuntimeConfig(
             api_base_url=row.api_base_url,
             api_key=row.get_api_key(),
-            signature=row.get_signature(),
             add_name=row.add_name,
             timeout_seconds=row.timeout_seconds,
         )
