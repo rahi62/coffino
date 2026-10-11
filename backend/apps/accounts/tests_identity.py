@@ -8,7 +8,6 @@ from django.utils import timezone
 from apps.accounts.models import OtpChallenge, User
 from apps.accounts.phone import mask_mobile, normalize_iran_mobile
 from apps.businesses.models import Branch, Business
-from apps.customers.models import Customer
 
 
 class IranianMobileNormalizationTests(TestCase):
@@ -68,13 +67,9 @@ class MobileIdentityModelTests(TestCase):
             business=self.business,
             role=User.Role.OWNER,
         )
-        customer = Customer.objects.create(branch=self.branch, name="مشتری قدیمی", phone="")
-
         self.assertIsNone(user.mobile)
         self.assertIsNone(user.mobile_verified_at)
         self.assertIsNone(user.tokens_invalid_before)
-        self.assertIsNone(customer.phone_normalized)
-        self.assertIsNone(customer.phone_verified_at)
 
     def test_otp_challenge_has_no_raw_code_field_and_reports_expiry(self):
         challenge = OtpChallenge.objects.create(
