@@ -125,7 +125,14 @@ jobs:
           docker network create cafino-ci
           docker run -d --name cafino-ci-db --network cafino-ci \
             -e POSTGRES_DB=cafino_ci -e POSTGRES_USER=cafino -e POSTGRES_PASSWORD=cafino-ci \
+            --health-cmd "pg_isready -U cafino -d cafino_ci" \
+            --health-interval 2s --health-timeout 3s --health-retries 20 \
             postgres:17-alpine
+          for i in $(seq 1 30); do
+            [ "$(docker inspect --format '{{.State.Health.Status}}' cafino-ci-db)" = "healthy" ] && break
+            sleep 2
+          done
+          test "$(docker inspect --format '{{.State.Health.Status}}' cafino-ci-db)" = "healthy"
           docker run -d --name cafino-ci-backend --network cafino-ci \
             -e DJANGO_DEBUG=0 -e CAF_INO_ENV=saas \
             -e DJANGO_SECRET_KEY=ci-docker-health-only \
