@@ -92,6 +92,62 @@ export async function loginWithOtp(challenge_id:string,code:string){
   return pair;
 }
 
+
+async function publicPost<T>(path:string,payload:Record<string,unknown>):Promise<T>{
+  let response:Response;
+  try{
+    response=await fetch(`${apiBase}${path}`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload),
+      cache:"no-store",
+    });
+  }catch{throw new Error(t("error.network"))}
+  if(!response.ok)throw await responseError(response,t("error.generic"));
+  return await response.json() as T;
+}
+
+export type OtpVerificationResponse={detail:string;verification_grant:string};
+export type SaasRegistrationInput={
+  business_name:string;
+  business_type:string;
+  branch_name:string;
+  branch_phone?:string;
+  copy_owner_mobile_to_branch?:boolean;
+  username:string;
+  email?:string;
+  password:string;
+  password_confirmation:string;
+  verification_grant:string;
+};
+export type SaasRegistrationResult={
+  user:{id:number;username:string;email:string};
+  business:{id:number;name:string};
+  branch:{id:number;name:string};
+  next:string;
+};
+
+export function requestRegistrationOtp(mobile:string){
+  return publicPost<OtpRequestResponse>("/auth/register/otp/request/",{mobile});
+}
+export function verifyRegistrationOtp(challenge_id:string,code:string){
+  return publicPost<OtpVerificationResponse>("/auth/register/otp/verify/",{challenge_id,code});
+}
+export function registerSaasOwner(input:SaasRegistrationInput){
+  return publicPost<SaasRegistrationResult>("/auth/register/",input as unknown as Record<string,unknown>);
+}
+export function requestPasswordRecovery(identifier:string){
+  return publicPost<OtpRequestResponse>("/auth/password/forgot/",{identifier});
+}
+export function verifyPasswordRecoveryOtp(challenge_id:string,code:string){
+  return publicPost<OtpVerificationResponse>("/auth/password/otp/verify/",{challenge_id,code});
+}
+export function resetPassword(verification_grant:string,password:string,password_confirmation:string){
+  return publicPost<{ok:boolean;detail:string}>("/auth/password/reset/",{
+    verification_grant,password,password_confirmation,
+  });
+}
+
 export async function refreshSession(){return await refreshCoordinator()}
 
 export function logout(redirect=true){
