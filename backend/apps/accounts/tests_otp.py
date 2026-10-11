@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from apps.accounts.otp_providers import OtpDeliveryResult
 from apps.accounts.models import OtpChallenge, PlatformOtpProviderConfig, User
 from apps.accounts.otp import (
     OtpCooldownError,
@@ -20,7 +21,6 @@ from apps.businesses.models import Business
 
 
 @override_settings(
-    CAF_INO_OTP_SENDER="apps.accounts.otp_providers.FakeOtpSender",
     CAF_INO_OTP_TTL_SECONDS=300,
     CAF_INO_OTP_RESEND_SECONDS=60,
     CAF_INO_OTP_MAX_ATTEMPTS=5,
@@ -29,6 +29,10 @@ from apps.businesses.models import Business
 )
 class OtpLifecycleTests(TestCase):
     def setUp(self):
+        sender_patch = patch("apps.accounts.otp.get_otp_sender")
+        sender = sender_patch.start().return_value
+        sender.send.return_value = OtpDeliveryResult(accepted=True, provider_code="0")
+        self.addCleanup(sender_patch.stop)
         cache.clear()
         self.business = Business.objects.create(name="کافه OTP")
 
@@ -266,7 +270,7 @@ class PlatformOtpProviderConfigTests(TestCase):
         self.assertIsInstance(get_otp_sender(), DisabledOtpSender)
 
     @override_settings(
-        CAF_INO_OTP_SENDER="apps.accounts.otp_providers.ParsGreenOtpSender",
+        PARSGREEN_OTP_ENABLED=True,
         PARSGREEN_API_KEY="env-key",
         PARSGREEN_SIGNATURE="env-signature",
     )
@@ -286,3 +290,24 @@ class PlatformOtpProviderConfigTests(TestCase):
         config.set_api_key("configured-key")
         config.save()
         self.assertIsInstance(get_otp_sender(), ParsGreenOtpSender)
+
+
+@override_settings(
+    DEBUG=True,
+    PARSGREEN_OTP_ENABLED=False,
+    CAF_INO_OTP_SENDER="apps.accounts.otp_providers.FakeOtpSender",
+)
+class RealOnlyOtpConfigurationTests(TestCase):
+    def test_legacy_fake_sender_setting_cannot_enable_fake_delivery(self):
+        self.assertIsInstance(get_otp_sender(), DisabledOtpSender)
+
+    def test_api_key_only_global_provider_takes_precedence_over_fake_setting(self):
+        config = PlatformOtpProviderConfig.objects.create(
+            provider=PlatformOtpProviderConfig.Provider.PARSGREEN,
+            enabled=True,
+        )
+        config.set_api_key("db-only-key")
+        config.save()
+        sender = get_otp_sender()
+        self.assertIsInstance(sender, ParsGreenOtpSender)
+        self.assertEqual(sender.config.api_key, "db-only-key")

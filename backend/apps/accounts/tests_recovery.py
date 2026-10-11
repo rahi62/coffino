@@ -6,12 +6,12 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from apps.accounts.otp_providers import OtpDeliveryResult
 from apps.accounts.models import OtpChallenge, User
 from apps.businesses.models import Business
 
 
 @override_settings(
-    CAF_INO_OTP_SENDER="apps.accounts.otp_providers.FakeOtpSender",
     CAF_INO_OTP_SEND_LIMIT_PER_HOUR=100,
     CAF_INO_OTP_VERIFY_LIMIT_PER_HOUR=100,
 )
@@ -20,6 +20,9 @@ class PasswordRecoveryApiTests(TestCase):
     NEW_PASSWORD = "Changed-Password-2026!"
 
     def setUp(self):
+        sender_patch = patch("apps.accounts.otp.get_otp_sender")
+        sender_patch.start().return_value.send.return_value = OtpDeliveryResult(accepted=True, provider_code="0")
+        self.addCleanup(sender_patch.stop)
         cache.clear()
         self.business = Business.objects.create(name="کافه بازیابی", deployment_type="SAAS")
         self.user = User.objects.create_user(
