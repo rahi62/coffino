@@ -3,7 +3,6 @@ from urllib.parse import urljoin
 
 from django.conf import settings
 from django.db import OperationalError, ProgrammingError
-from django.utils.module_loading import import_string
 
 from apps.core.network_safety import post_json
 
@@ -37,11 +36,6 @@ class OtpSender:
 class DisabledOtpSender(OtpSender):
     def send(self, *, mobile: str, code: str, correlation_id: str) -> OtpDeliveryResult:
         raise OtpDeliveryError(OTP_DELIVERY_ERROR)
-
-
-class FakeOtpSender(OtpSender):
-    def send(self, *, mobile: str, code: str, correlation_id: str) -> OtpDeliveryResult:
-        return OtpDeliveryResult(accepted=True, provider_code="FAKE")
 
 
 def pars_green_env_config() -> ParsGreenRuntimeConfig:
@@ -138,24 +132,13 @@ def sender_from_platform_config(row) -> OtpSender:
 
 
 def get_otp_sender() -> OtpSender:
-    sender_path = getattr(
-        settings,
-        "CAF_INO_OTP_SENDER",
-        "apps.accounts.otp_providers.DisabledOtpSender",
-    )
-
-    # Explicit fake/custom adapters remain available for tests and controlled
-    # development integrations. Production's default Disabled/ParsGreen paths
-    # can be overridden by the global database configuration below.
-    built_in_paths = {
-        "apps.accounts.otp_providers.DisabledOtpSender",
-        "apps.accounts.otp_providers.ParsGreenOtpSender",
-    }
-    if sender_path not in built_in_paths:
-        return import_string(sender_path)()
-
+    # Production-only: never allow a fake/custom sender to bypass real SMS delivery.
+    # The global DB provider takes precedence; absent DB config uses the
+    # configured ParsGreen provider only when explicitly enabled.
     row_exists, db_config = pars_green_db_config()
     if row_exists:
         return ParsGreenOtpSender(db_config) if db_config else DisabledOtpSender()
 
-    return import_string(sender_path)()
+    if getattr(settings, "PARSGREEN_OTP_ENABLED", False):
+        return ParsGreenOtpSender()
+    return DisabledOtpSender()
