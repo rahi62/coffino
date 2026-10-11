@@ -1,4 +1,3 @@
-import base64
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -191,9 +190,7 @@ class ParsGreenOtpSenderTests(TestCase):
         self.assertTrue(kwargs["require_https"])
         self.assertFalse(kwargs["allow_private"])
         self.assertEqual(kwargs["timeout"], 7)
-        scheme, encoded = kwargs["headers"]["Authorization"].split(" ", 1)
-        self.assertEqual(scheme, "Basic")
-        self.assertEqual(base64.b64decode(encoded).decode(), "api-key:signature")
+        self.assertEqual(kwargs["headers"]["Authorization"], "basic apikey:api-key")
         self.assertTrue(result.accepted)
         self.assertEqual(result.provider_code, "0")
 
@@ -255,7 +252,6 @@ class PlatformOtpProviderConfigTests(TestCase):
         sender = get_otp_sender()
         self.assertIsInstance(sender, ParsGreenOtpSender)
         self.assertEqual(sender.config.api_key, "db-key")
-        self.assertEqual(sender.config.signature, "db-signature")
 
     @override_settings(
         CAF_INO_OTP_SENDER="apps.accounts.otp_providers.ParsGreenOtpSender",
@@ -278,16 +274,15 @@ class PlatformOtpProviderConfigTests(TestCase):
         sender = get_otp_sender()
         self.assertIsInstance(sender, ParsGreenOtpSender)
         self.assertEqual(sender.config.api_key, "env-key")
-        self.assertEqual(sender.config.signature, "env-signature")
 
     @override_settings(
         CAF_INO_OTP_SENDER="apps.accounts.otp_providers.DisabledOtpSender",
     )
-    def test_enabled_database_row_with_missing_secret_fails_closed(self):
+    def test_enabled_database_row_with_api_key_is_ready_without_signature(self):
         config = PlatformOtpProviderConfig.objects.create(
             provider=PlatformOtpProviderConfig.Provider.PARSGREEN,
             enabled=True,
         )
         config.set_api_key("configured-key")
         config.save()
-        self.assertIsInstance(get_otp_sender(), DisabledOtpSender)
+        self.assertIsInstance(get_otp_sender(), ParsGreenOtpSender)
