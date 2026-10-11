@@ -219,3 +219,52 @@ class SaasRegistrationApiTests(APITestCase):
         self.assertEqual({row["id"] for row in branches.data}, {own_branch.id})
         self.assertNotIn(other_business.id, {row["id"] for row in businesses.data})
         self.assertNotIn(other_branch.id, {row["id"] for row in branches.data})
+
+
+    def test_registered_owner_gets_owner_context_and_cannot_cross_tenant_boundaries(self):
+        other_business = Business.objects.create(name="Tenant B", deployment_type="SAAS")
+        other_branch = Branch.objects.create(
+            business=other_business, name="Branch B", phone="02100000000"
+        )
+        registered = self.client.post("/api/v1/auth/register/", self.payload(), format="json")
+        self.assertEqual(registered.status_code, status.HTTP_201_CREATED)
+        owner = User.objects.get(pk=registered.data["user"]["id"])
+        own_business = owner.business
+        own_branch = own_business.branches.get()
+
+        self.client.force_authenticate(owner)
+
+        permissions = self.client.get("/api/v1/permissions/me/")
+        self.assertEqual(permissions.status_code, status.HTTP_200_OK)
+        self.assertEqual(permissions.data["role"], User.Role.OWNER)
+        self.assertTrue(permissions.data["permissions"]["settings.manage"])
+        self.assertTrue(permissions.data["permissions"]["business.manage"])
+        self.assertTrue(permissions.data["permissions"]["branches.manage"])
+
+        context = self.client.get("/api/v1/settings/context/")
+        self.assertEqual(context.status_code, status.HTTP_200_OK)
+        self.assertEqual(context.data["business"]["id"], own_business.id)
+        self.assertEqual({row["id"] for row in context.data["branches"]}, {own_branch.id})
+        self.assertNotEqual(context.data["business"]["id"], other_business.id)
+
+        foreign_read = self.client.get(f"/api/v1/branches/{other_branch.id}/")
+        foreign_write = self.client.patch(
+            f"/api/v1/branches/{other_branch.id}/",
+            {"phone": "02199999999"},
+            format="json",
+        )
+        self.assertEqual(foreign_read.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(foreign_write.status_code, status.HTTP_404_NOT_FOUND)
+        other_branch.refresh_from_db()
+        self.assertEqual(other_branch.phone, "02100000000")
+
+        foreign_onboarding = self.client.post(
+            "/api/v1/settings/onboarding/apply/",
+            {
+                "preset": "CAFE",
+                "branch": other_branch.id,
+                "deployment_type": "SAAS",
+            },
+            format="json",
+        )
+        self.assertEqual(foreign_onboarding.status_code, status.HTTP_400_BAD_REQUEST)
