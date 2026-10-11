@@ -3,20 +3,15 @@ import {useEffect,useState} from "react";
 import {usePathname} from "next/navigation";
 import {api} from "@/lib/api";
 import {clearSession,hasStoredSession} from "@/lib/auth";
+import {isPublicRoute} from "@/lib/public-routes.mjs";
 
 type AuthState="checking"|"ready"|"error";
-const publicRoutes=["/login","/register","/forgot-password","/reset-password"];
-
-function isPublic(pathname:string){
- return publicRoutes.includes(pathname)||pathname.startsWith("/menu/");
-}
-
 export default function AuthGuard({children}:{children:React.ReactNode}){
  const pathname=usePathname();
  const [state,setState]=useState<AuthState>("checking");
 
  useEffect(()=>{
-  if(isPublic(pathname)){setState("ready");return}
+  if(isPublicRoute(pathname)){setState("ready");return}
   if(!hasStoredSession()){location.replace("/login");return}
 
   let cancelled=false;
