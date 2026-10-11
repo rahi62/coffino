@@ -31,6 +31,7 @@ jobs:
         with: {python-version: "3.12"}
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements-dev.txt
+      - run: sh -n start-web.sh
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py migrate --noinput

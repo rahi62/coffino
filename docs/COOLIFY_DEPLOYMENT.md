@@ -22,8 +22,7 @@ feature branch
 → full CI
 → review
 → merge to main
-→ deploy Backend
-→ migrate
+→ deploy Backend (startup runs committed migrations before Gunicorn)
 → Backend smoke test
 → deploy Frontend
 → Worker/Beat restart if backend code changed
@@ -80,7 +79,7 @@ The SaaS Identity milestone contains additive account/OTP migrations. Before Pro
 1. confirm a current PostgreSQL backup exists;
 2. inspect pending migrations;
 3. deploy Backend code compatible with those migrations;
-4. run migrations exactly once;
+4. on the current single-backend Coolify topology, `start-web.sh` runs `migrate --noinput` before Gunicorn; confirm this command actually executed and completed in deployment logs (do not separately execute concurrent migrations);
 5. verify Backend health and legacy password login;
 6. only then publish the new Frontend auth/registration UI.
 
@@ -120,3 +119,12 @@ See also:
 
 - `docs/SAAS_IDENTITY_OTP_OPERATIONS.md`
 - `docs/LOGIN_AND_USER_MANAGEMENT.md`
+
+
+## Backend startup migration policy
+
+The Backend Dockerfile starts `/app/start-web.sh`. On the single web instance, it runs committed Django migrations before Gunicorn accepts requests. Migration failure stops web startup rather than serving incompatible API code.
+
+Set `CAF_INO_RUN_MIGRATIONS=0` only when a dedicated migration job reliably runs before the web application. Multiple simultaneously-starting web replicas require a coordinated migration job or locking; do not use concurrent startup migrations as a general scaling strategy.
+
+Coolify may override the image CMD through custom start commands. Verify the service has no conflicting command override before relying on this policy.
