@@ -8,6 +8,8 @@ const fa: MessageCatalog = {
   "error.unauthorized": "نشست شما منقضی شده است. دوباره وارد شوید.",
   "error.forbidden": "اجازه انجام این عملیات را ندارید.",
   "error.not_found": "اطلاعات درخواستی پیدا نشد.",
+  "error.rate_limit": "تعداد درخواست‌ها بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.",
+  "error.server": "سرویس موقتاً در دسترس نیست. کمی بعد دوباره تلاش کنید.",
   "error.conflict": "این عملیات با وضعیت فعلی اطلاعات سازگار نیست. صفحه را تازه‌سازی کنید.",
   "error.validation": "اطلاعات واردشده معتبر نیست. موارد را بررسی کنید.",
   "error.order_creation_failed": "ثبت سفارش در حال حاضر ممکن نیست. دوباره تلاش کنید.",
@@ -190,7 +192,13 @@ export function userMessage(payload: unknown, status?: number) {
     try { data = JSON.parse(payload); } catch { data = payload; }
   }
   if (typeof data === "object" && data !== null) {
-    const body = data as { code?: string; detail?: unknown; message?: unknown };
+    const body = data as { code?: string; detail?: unknown; message?: unknown; [key:string]:unknown };
+    const fieldError = Object.entries(body).find(([key,value]) => !["code","detail","message"].includes(key) && (typeof value === "string" || (Array.isArray(value) && typeof value[0] === "string")));
+    if (fieldError) {
+      const value = fieldError[1];
+      const candidate = Array.isArray(value) ? value[0] : value;
+      if (typeof candidate === "string" && !/[A-Za-z]/.test(candidate)) return localizeLegacyText(candidate);
+    }
     if (body.code) {
       const message = t(`error.${body.code}`);
       return message.startsWith("error.") ? t("error.generic") : message;
@@ -205,6 +213,8 @@ export function userMessage(payload: unknown, status?: number) {
       return localized;
     }
   }
+  if (status === 429) return t("error.rate_limit");
+  if (status !== undefined && status >= 500) return t("error.server");
   if (status === 401) return t("error.unauthorized");
   if (status === 403) return t("error.forbidden");
   if (status === 404) return t("error.not_found");
