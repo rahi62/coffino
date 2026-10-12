@@ -34,7 +34,7 @@ const moduleLabels:Record<string,string>={
  PAYMENT_GATEWAY:"درگاه پرداخت",NOTIFICATIONS:"اعلان‌ها",SMS:"پیامک"
 };
 
-const deploymentLabels:Record<string,string>={LOCAL:"محلی / ویندوز",SAAS:"ابری",DEDICATED:"اختصاصی مدیریت‌شده"};
+const deploymentLabels:Record<string,string>={LOCAL:"نصب روی سیستم شخصی",SAAS:"نصب تحت وب",DEDICATED:"راه‌اندازی سرور اختصاصی"};
 
 export default function OnboardingPage(){
  const {data,selectedBranchId,setSelectedBranchId,refresh}=useSettings();
