@@ -7,8 +7,8 @@ import {SettingsProvider,useSettings} from "./settings-context";
 const nav=[
  ["/settings","نمای کلی",Settings2,null],
  ["/settings/onboarding","راه‌اندازی هوشمند",CheckCircle2,"business.manage"],
- ["/settings/go-live","Go-Live و تحویل",ShieldCheck,"settings.manage"],
- ["/settings/release","Release و لایسنس",PackageCheck,"settings.manage"],
+ ["/settings/go-live","آماده‌سازی انتشار و تحویل",ShieldCheck,"settings.manage"],
+ ["/settings/release","نسخه برنامه و مجوز استفاده",PackageCheck,"settings.manage"],
  ["/settings/business","کسب‌وکار و ماژول‌ها",Building2,"business.manage"],
  ["/settings/branches","شعب و صندوق‌ها",Store,"branches.manage"],
  ["/settings/dining","سالن و تعریف میز",Armchair,"settings.manage"],
