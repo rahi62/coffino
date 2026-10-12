@@ -86,7 +86,7 @@ export default function Dashboard(){
       <h2 className="text-lg font-black">دسترسی سریع</h2>
       <p className="mt-1 text-xs text-[#8d8178]">عملیات مجاز و فعال کسب‌وکار، بدون جست‌وجو در منو</p>
       {!permissions?<p role="status" className="mt-4 text-sm text-[#8d8178]">در انتظار دریافت مجوزها…</p>
-        :actions.length?<div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{actions.map(action=><Link key={action.href} href={action.href} className={`flex min-h-16 flex-col justify-center rounded-xl border p-3 text-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b9792d] ${action.href==="/pos"?"border-[#b9792d] bg-[#fbefd9] font-black":"border-[#eadfd3] bg-[#fffdf9] hover:bg-[#f7f0e8]"}`}><span className="font-bold">{action.label}</span><span className="mt-1 text-xs text-[#8d8178]">{action.detail}</span></Link>)}</div>
+        :actions.length?<div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">{actions.map((action:{href:string;label:string;detail:string})=><Link key={action.href} href={action.href} className={`flex min-h-16 flex-col justify-center rounded-xl border p-3 text-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#b9792d] ${action.href==="/pos"?"border-[#b9792d] bg-[#fbefd9] font-black":"border-[#eadfd3] bg-[#fffdf9] hover:bg-[#f7f0e8]"}`}><span className="font-bold">{action.label}</span><span className="mt-1 text-xs text-[#8d8178]">{action.detail}</span></Link>)}</div>
         :<p className="mt-4 text-sm text-[#8d8178]">میان‌بری با سطح دسترسی فعلی در دسترس نیست.</p>}
     </section>
 
