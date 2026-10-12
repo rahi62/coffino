@@ -17,9 +17,9 @@ type ApplyResult={
   created:BootstrapResult;
   readiness:SettingsReadiness;
 };
-type HealthCheck={key:string;title:string;status:"ok"|"warning"|"error"|"skipped";message:string;mode:string;details:Record<string,unknown>};
-type HealthResult={branch:{id:number;name:string};live:boolean;summary:{ok:number;warning:number;error:number;total:number};checks:HealthCheck[]};
-type PrinterHealth={branch:{id:number;name:string};check:HealthCheck};
+type سلامتCheck={key:string;title:string;status:"ok"|"warning"|"error"|"skipped";message:string;mode:string;details:Record<string,unknown>};
+type سلامتResult={branch:{id:number;name:string};live:boolean;summary:{ok:number;warning:number;error:number;total:number};checks:سلامتCheck[]};
+type Printerسلامت={branch:{id:number;name:string};check:سلامتCheck};
 
 type FormState={
   branch:string;branch_name:string;branch_phone:string;branch_address:string;deployment_type:string;
@@ -28,13 +28,13 @@ type FormState={
 };
 
 const moduleLabels:Record<string,string>={
- POS:"فروش / POS",DINE_IN:"سالن",TAKEAWAY:"بیرون‌بر",KITCHEN_DISPLAY:"KDS",INVENTORY:"انبار",RECIPES:"رسپی",
+ POS:"فروش و صندوق",DINE_IN:"سالن",TAKEAWAY:"بیرون‌بر",KITCHEN_DISPLAY:"KDS",INVENTORY:"انبار",RECIPES:"رسپی",
  PRODUCTION:"تولید",PURCHASING:"خرید",ACCOUNTING:"مالی مدیریتی",CUSTOMERS:"مشتریان",LOYALTY:"وفاداری",REPORTING:"گزارش‌ها",
  PRINTING:"چاپ",RESERVATION:"رزرو",MULTI_BRANCH:"چندشعبه",ONLINE_ORDERING:"سفارش آنلاین",DELIVERY:"ارسال",
  PAYMENT_GATEWAY:"درگاه پرداخت",NOTIFICATIONS:"اعلان‌ها",SMS:"پیامک"
 };
 
-const deploymentLabels:Record<string,string>={LOCAL:"Local / ویندوز",SAAS:"Cloud SaaS",DEDICATED:"Dedicated Managed"};
+const deploymentLabels:Record<string,string>={LOCAL:"محلی / ویندوز",SAAS:"Cloud SaaS",DEDICATED:"Dedicated Managed"};
 
 export default function OnboardingPage(){
  const {data,selectedBranchId,setSelectedBranchId,refresh}=useSettings();
@@ -44,8 +44,8 @@ export default function OnboardingPage(){
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState("");
  const [result,setResult]=useState<ApplyResult|null>(null);
- const [health,setHealth]=useState<HealthResult|null>(null);
- const [printerHealth,setPrinterHealth]=useState<HealthCheck|null>(null);
+ const [health,setسلامت]=useState<سلامتResult|null>(null);
+ const [printerسلامت,setPrinterسلامت]=useState<سلامتCheck|null>(null);
  const [form,setForm]=useState<FormState>({
    branch:"",branch_name:"",branch_phone:"",branch_address:"",deployment_type:"LOCAL",
    replace_modules:true,create_register:true,register_name:"صندوق اصلی",hall_name:"سالن اصلی",table_count:"0",table_capacity:"4",
@@ -84,7 +84,7 @@ export default function OnboardingPage(){
  const apply=async()=>{
    if(!preset){setMessage("نوع کسب‌وکار را انتخاب کنید.");return}
    if(!form.branch_name.trim()){setMessage("نام شعبه لازم است.");return}
-   setBusy(true);setMessage("");setHealth(null);setPrinterHealth(null);
+   setBusy(true);setMessage("");setسلامت(null);setPrinterسلامت(null);
    try{
      const response=await api<ApplyResult>("/settings/onboarding/apply/",{method:"POST",body:JSON.stringify({
        preset:preset.key,branch:form.branch?Number(form.branch):null,deployment_type:form.deployment_type,
@@ -94,32 +94,32 @@ export default function OnboardingPage(){
        create_stations:form.create_stations,create_online_settings:form.create_online_settings,
      })});
      setResult(response);setSelectedBranchId(response.branch.id);setStep(4);await refresh();
-     await runHealth(false,response.branch.id);
+     await runسلامت(false,response.branch.id);
    }catch(e:any){setMessage(e.message||"راه‌اندازی انجام نشد")}
    finally{setBusy(false)}
  };
 
- const runHealth=async(live:boolean,branchId?:number)=>{
+ const runسلامت=async(live:boolean,branchId?:number)=>{
    const id=branchId||result?.branch.id||selectedBranchId;if(!id)return;
    setBusy(true);setMessage("");
-   try{setHealth(await api<HealthResult>(`/settings/health/?branch=${id}&live=${live?1:0}`))}
-   catch(e:any){setMessage(e.message||"Health Check انجام نشد")}
+   try{setسلامت(await api<سلامتResult>(`/settings/health/?branch=${id}&live=${live?1:0}`))}
+   catch(e:any){setMessage(e.message||"بررسی سلامت انجام نشد")}
    finally{setBusy(false)}
  };
 
- const runPrinterHealth=async()=>{
+ const runPrinterسلامت=async()=>{
    const branchId=result?.branch.id||selectedBranchId;if(!branchId)return;
    setMessage("");
    const bridge=(window as unknown as {cafino?:{listPrinters?:()=>Promise<Array<{name?:string;displayName?:string}>>}}).cafino;
    if(!bridge?.listPrinters){
-     setPrinterHealth({key:"printer_runtime",title:"پرینتر محلی",status:"warning",message:"این تست فقط داخل Cafino Desktop/Electron قابل اجرا است. در نسخه وب، پیکربندی PrinterDevice را بررسی کنید.",mode:"hardware-runtime",details:{}});
+     setPrinterسلامت({key:"printer_runtime",title:"پرینتر محلی",status:"warning",message:"این تست فقط داخل Cafino Desktop/Electron قابل اجرا است. در نسخه وب، پیکربندی PrinterDevice را بررسی کنید.",mode:"hardware-runtime",details:{}});
      return;
    }
    setBusy(true);
    try{
      const devices=(await bridge.listPrinters()).map(x=>String(x.name||x.displayName||"").trim()).filter(Boolean);
-     const response=await api<PrinterHealth>("/settings/health/printer/",{method:"POST",body:JSON.stringify({branch:branchId,devices})});
-     setPrinterHealth(response.check);
+     const response=await api<Printerسلامت>("/settings/health/printer/",{method:"POST",body:JSON.stringify({branch:branchId,devices})});
+     setPrinterسلامت(response.check);
    }catch(e:any){setMessage(e.message||"تست پرینتر انجام نشد")}
    finally{setBusy(false)}
  };
@@ -158,20 +158,20 @@ export default function OnboardingPage(){
        {has("POS")&&<div className="card p-5"><h3 className="font-black">Default صندوق</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_register} onChange={e=>setForm({...form,create_register:e.target.checked})}/> اگر صندوق فعال وجود ندارد، یکی بساز</label>{form.create_register&&<input className="border rounded-xl p-2 w-full mt-3" value={form.register_name} onChange={e=>setForm({...form,register_name:e.target.value})}/>}</div>}
        {has("DINE_IN")&&<div className="card p-5"><h3 className="font-black">سالن و میز اولیه</h3><div className="grid grid-cols-3 gap-2 mt-3"><input className="border rounded-xl p-2 col-span-3" value={form.hall_name} onChange={e=>setForm({...form,hall_name:e.target.value})} placeholder="نام سالن"/><label className="text-xs">تعداد میز<input type="number" min="0" max="200" className="border rounded-xl p-2 w-full mt-1" value={form.table_count} onChange={e=>setForm({...form,table_count:e.target.value})}/></label><label className="text-xs">ظرفیت<input type="number" min="1" max="30" className="border rounded-xl p-2 w-full mt-1" value={form.table_capacity} onChange={e=>setForm({...form,table_capacity:e.target.value})}/></label></div></div>}
        {has("KITCHEN_DISPLAY")&&<div className="card p-5"><h3 className="font-black">ایستگاه‌های آماده‌سازی</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_stations} onChange={e=>setForm({...form,create_stations:e.target.checked})}/> ایستگاه‌های پیشنهادی Preset ساخته شوند</label><div className="flex flex-wrap gap-1 mt-3">{preset.stations.map(x=><span className="badge" key={x}>{x}</span>)}</div></div>}
-       {has("ONLINE_ORDERING")&&<div className="card p-5"><h3 className="font-black">منوی آنلاین</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_online_settings} onChange={e=>setForm({...form,create_online_settings:e.target.checked})}/> تنظیمات اولیه Slug/QR ساخته شود</label><p className="text-xs text-[#8d8178] mt-2">پذیرش سفارش عمداً خودکار روشن نمی‌شود؛ بعد از تکمیل منو و Health Check آن را فعال کن.</p></div>}
+       {has("ONLINE_ORDERING")&&<div className="card p-5"><h3 className="font-black">منوی آنلاین</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_online_settings} onChange={e=>setForm({...form,create_online_settings:e.target.checked})}/> تنظیمات اولیه Slug/QR ساخته شود</label><p className="text-xs text-[#8d8178] mt-2">پذیرش سفارش عمداً خودکار روشن نمی‌شود؛ بعد از تکمیل منو و بررسی سلامت آن را فعال کن.</p></div>}
      </div>
      <div className="card p-4 flex items-start gap-2"><CircleAlert size={18} className="text-amber-600 shrink-0"/><p className="text-sm leading-6">Cafino در Wizard محصول، قیمت، موجودی یا رسپی ساختگی ایجاد نمی‌کند. این داده‌ها باید واقعی باشند و Readiness بعد از Apply موارد باقی‌مانده را نشان می‌دهد.</p></div>
-     <div className="flex justify-between"><button className="btn" onClick={()=>setStep(2)}>قبلی</button><button className="btn btn-primary" disabled={busy} onClick={apply}>{busy?"در حال اعمال…":"اعمال Preset و راه‌اندازی"}</button></div>
+     <div className="flex justify-between"><button className="btn" onClick={()=>setStep(2)}>قبلی</button><button className="btn btn-primary" disabled={busy} onClick={apply}>{busy?"در حال اعمال…":"اعمال الگوی انتخابی و راه‌اندازی"}</button></div>
    </section>}
 
    {step===4&&<section className="space-y-5">
-     <div className="card p-5"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex gap-2 items-center"><CheckCircle2 className="text-emerald-600"/><h3 className="font-black text-lg">Bootstrap انجام شد</h3></div><p className="text-sm text-[#8d8178] mt-1">{result?`${result.business.name} — ${result.branch.name}`:"برای شعبه انتخابی می‌توانی Health Check را اجرا کنی."}</p></div>{result&&<div className="text-left"><b className="text-3xl">{result.readiness.overall.score}%</b><div className="text-xs text-[#8d8178]">Setup Readiness</div></div>}</div>
-       {result&&<div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 mt-4"><SmallMetric label="صندوق" value={result.created.register?"ساخته شد":"موجود/رد شد"}/><SmallMetric label="میز جدید" value={String(result.created.tables)}/><SmallMetric label="Station جدید" value={String(result.created.stations)}/><SmallMetric label="Online Config" value={result.created.online_settings?"ساخته شد":"موجود/رد شد"}/><SmallMetric label="Blocker" value={String(result.readiness.overall.blocking)}/></div>}
+     <div className="card p-5"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex gap-2 items-center"><CheckCircle2 className="text-emerald-600"/><h3 className="font-black text-lg">Bootstrap انجام شد</h3></div><p className="text-sm text-[#8d8178] mt-1">{result?`${result.business.name} — ${result.branch.name}`:"برای شعبه انتخابی می‌توانی بررسی سلامت را اجرا کنی."}</p></div>{result&&<div className="text-left"><b className="text-3xl">{result.readiness.overall.score}%</b><div className="text-xs text-[#8d8178]">وضعیت آمادگی راه‌اندازی</div></div>}</div>
+       {result&&<div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 mt-4"><SmallMetric label="صندوق" value={result.created.register?"ساخته شد":"موجود/رد شد"}/><SmallMetric label="میز جدید" value={String(result.created.tables)}/><SmallMetric label="Station جدید" value={String(result.created.stations)}/><SmallMetric label="برخط Config" value={result.created.online_settings?"ساخته شد":"موجود/رد شد"}/><SmallMetric label="Blocker" value={String(result.readiness.overall.blocking)}/></div>}
      </div>
 
-     <div className="card p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-black text-lg">Health Check اتصال‌ها</h3><p className="text-sm text-[#8d8178] mt-1">Config Check هیچ پیام یا پرداختی ایجاد نمی‌کند؛ Live Check فقط HEAD امن برای سنجش Reachability می‌فرستد.</p></div><div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={()=>runHealth(false)}>Config Check</button><button className="btn btn-primary" disabled={busy} onClick={()=>runHealth(true)}>Live Network Check</button><button className="btn" disabled={busy} onClick={runPrinterHealth}>Local Printer Check</button></div></div>
-       {health&&<><div className="grid grid-cols-3 gap-2 mt-4"><SmallMetric label="سالم" value={String(health.summary.ok)}/><SmallMetric label="هشدار" value={String(health.summary.warning)}/><SmallMetric label="خطا" value={String(health.summary.error)}/></div><div className="space-y-2 mt-4">{health.checks.map(x=><HealthRow key={x.key} check={x}/>)}{printerHealth&&<HealthRow check={printerHealth}/>}</div></>}
-       {!health&&<div className="border rounded-xl p-4 text-sm text-[#8d8178] mt-4">هنوز Health Check اجرا نشده است.</div>}
+     <div className="card p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-black text-lg">بررسی سلامت اتصال‌ها</h3><p className="text-sm text-[#8d8178] mt-1">Config Check هیچ پیام یا پرداختی ایجاد نمی‌کند؛ Live Check فقط HEAD امن برای سنجش Reachability می‌فرستد.</p></div><div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={()=>runسلامت(false)}>Config Check</button><button className="btn btn-primary" disabled={busy} onClick={()=>runسلامت(true)}>Live Network Check</button><button className="btn" disabled={busy} onClick={runPrinterسلامت}>Local Printer Check</button></div></div>
+       {health&&<><div className="grid grid-cols-3 gap-2 mt-4"><SmallMetric label="سالم" value={String(health.summary.ok)}/><SmallMetric label="هشدار" value={String(health.summary.warning)}/><SmallMetric label="خطا" value={String(health.summary.error)}/></div><div className="space-y-2 mt-4">{health.checks.map(x=><سلامتRow key={x.key} check={x}/>)}{printerسلامت&&<سلامتRow check={printerسلامت}/>}</div></>}
+       {!health&&<div className="border rounded-xl p-4 text-sm text-[#8d8178] mt-4">هنوز بررسی سلامت اجرا نشده است.</div>}
      </div>
 
      <div className="grid md:grid-cols-3 gap-4"><ActionCard icon={<Globe2 size={19}/>} title="سفارش آنلاین" href="/settings/online" text="منو، Delivery Zone و درگاه را تکمیل کن."/><ActionCard icon={<MessageSquare size={19}/>} title="اعلان‌ها" href="/settings/notifications" text="SMS و Push Provider را تنظیم و بررسی کن."/><ActionCard icon={<ReceiptText size={19}/>} title="چاپ" href="/printing" text="System Name و قالب رسید/آشپزخانه را نهایی کن."/></div>
@@ -182,7 +182,7 @@ export default function OnboardingPage(){
 
 function SmallMetric({label,value}:{label:string;value:string}){return <div className="rounded-xl bg-[#eee6dc] p-3"><span className="text-xs text-[#8d8178]">{label}</span><b className="block mt-1">{value}</b></div>}
 
-function HealthRow({check}:{check:HealthCheck}){
+function سلامتRow({check}:{check:سلامتCheck}){
  const icon=check.status==="ok"?<CheckCircle2 size={19} className="text-emerald-600"/>:<CircleAlert size={19} className={check.status==="error"?"text-red-600":"text-amber-600"}/>;
  const label=check.status==="ok"?"سالم":check.status==="error"?"خطا":check.status==="skipped"?"غیرفعال":"نیازمند بررسی";
  return <div className="border rounded-xl p-3 flex items-start gap-3"><div className="mt-0.5">{icon}</div><div className="flex-1 min-w-0"><div className="flex flex-wrap items-center gap-2"><b className="text-sm">{check.title}</b><span className="badge">{label}</span><span className="text-[10px] text-[#8d8178]">{check.mode}</span></div><p className="text-xs text-[#8d8178] leading-6 mt-1">{check.message}</p></div></div>
