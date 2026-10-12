@@ -45,7 +45,10 @@ def can_access_branch(user,branch,*,cross_permission="branches.dashboard"):
     if own_business is None or branch.business_id!=own_business.id:
         return False
     if not getattr(user,"branch_id",None):
-        # Business-level users still need a permission that grants cross-branch access.
+        # A business owner may use their sole active branch without cross-branch privileges.
+        # This does not grant access to another business or multiple-branch navigation.
+        if getattr(user,'role',None)=='OWNER' and branch.is_active and Branch.objects.filter(business=own_business,is_active=True).count()==1:
+            return True
         return has_perm(user,cross_permission)
     return branch.id==user.branch_id or has_perm(user,cross_permission)
 
@@ -167,7 +170,14 @@ def resolve_branch_for_user(user,branch_id=None,*,cross_permission="branches.das
         if getattr(user,"branch_id",None):
             branch=user.branch
         else:
-            raise PermissionDenied("شناسه شعبه لازم است.")
+            business=tenant_business(user)
+            if business and getattr(user,"role",None)=="OWNER":
+                active=Branch.objects.filter(business=business,is_active=True)
+                branch=active.first() if active.count()==1 else None
+                if branch is None:
+                    raise PermissionDenied("شعبه را انتخاب کنید؛ انتخاب خودکار فقط برای کسب‌وکار تک‌شعبه‌ای امکان‌پذیر است.")
+            else:
+                raise PermissionDenied("شناسه شعبه لازم است.")
     else:
         branch=Branch.objects.select_related("business").get(pk=branch_id)
     return assert_branch_access(user,branch,cross_permission=cross_permission)

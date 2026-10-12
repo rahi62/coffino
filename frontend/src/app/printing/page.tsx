@@ -5,6 +5,8 @@ import FormDialog from "@/components/form-dialog";
 import ThermalReceiptDesigner, {defaultReceiptLayout, DocumentType, ThermalLayout, ThermalReceiptPreview} from "@/components/thermal-receipt-designer";
 import {api} from "@/lib/api";
 import {label} from "@/lib/i18n";
+import Link from "next/link";
+
 
 type Device = {id: number; branch: number; name: string; system_name: string; kind: string; paper_width: number; is_active: boolean};
 type Template = {
@@ -21,6 +23,11 @@ const deviceEmpty = {name: "", system_name: "", kind: "RECEIPT", paper_width: "8
 const typeLabel: Record<string, string> = {RECEIPT: "رسید مشتری", KITCHEN: "تیکت آشپزخانه", BAR: "تیکت بار"};
 
 export default function Printing() {
+  const [permissions,setPermissions]=useState<Record<string,boolean>|null>(null);
+  const [permissionsLoading,setPermissionsLoading]=useState(true);
+  const mayManage=permissions?.["printing.manage"]===true;
+  const mayUse=permissions?.["printing.use"]===true;
+  useEffect(()=>{api<{permissions:Record<string,boolean>}>("/permissions/me/").then(x=>setPermissions(x.permissions)).catch(()=>setPermissions({})).finally(()=>setPermissionsLoading(false))},[]);
   const [osPrinters, setOsPrinters] = useState<any[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -53,7 +60,9 @@ export default function Printing() {
       setTemplates(nextTemplates);
       setJobs(nextJobs);
       setBranches(nextBranches);
-      setReceipt(localStorage.getItem("cafino_receipt_printer") || "");
+      if (!branch) {const stored=Number(localStorage.getItem("cafino_settings_branch")||0);const candidate=nextBranches.find(x=>x.id===stored)||nextBranches[0];if(candidate)setBranch(String(candidate.id));}
+      const currentId=branch||String(nextBranches.find(x=>x.id===Number(localStorage.getItem("cafino_settings_branch")||0))?.id||nextBranches[0]?.id||"");
+      setReceipt(localStorage.getItem(`cafino_receipt_branch_${currentId}`)||localStorage.getItem("cafino_receipt_printer") || "");
       setKitchen(localStorage.getItem("cafino_kitchen_printer") || "");
       const desktop = (window as any).cafino;
       if (desktop?.listPrinters) setOsPrinters(await desktop.listPrinters());
@@ -62,7 +71,7 @@ export default function Printing() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { if (!permissionsLoading && (mayManage || mayUse)) void load(); }, [permissionsLoading, mayManage, mayUse]);
 
   const closeDevice = () => { if (!busy) { setDeviceOpen(false); setDeviceForm(deviceEmpty); } };
   const closeTemplate = () => { if (!busy) { setTemplateOpen(false); setEditingTemplate(null); setTemplateForm(newTemplate()); } };
@@ -77,7 +86,7 @@ export default function Printing() {
     setDeviceOpen(true);
   };
   const saveDevice = async () => {
-    if (!selectedBranch || !deviceForm.name.trim()) return;
+    if (!mayManage || !selectedBranch || !deviceForm.name.trim()) return;
     setBusy(true);
     try {
       await api("/printers/", {method: "POST", body: JSON.stringify({...deviceForm, branch: Number(selectedBranch), paper_width: Number(deviceForm.paper_width)})});
@@ -105,7 +114,7 @@ export default function Printing() {
     }));
   };
   const saveTemplate = async () => {
-    if (!selectedBranch || !templateForm.name.trim()) return;
+    if (!mayManage || !selectedBranch || !templateForm.name.trim()) return;
     setBusy(true);
     try {
       const body = {...templateForm, branch: Number(selectedBranch), name: templateForm.name.trim()};
@@ -129,11 +138,14 @@ export default function Printing() {
     setMessage(result?.ok ? "برگهٔ آزمایشی به چاپگر ارسال شد." : `چاپ آزمایشی انجام نشد: ${result?.error || "خطای نامشخص"}`);
   };
 
+  if (permissionsLoading) return <div role="status" className="card p-5">در حال بررسی دسترسی چاپ…</div>;
+  if (!mayManage && !mayUse) return <section role="alert" className="card p-5"><h1 className="text-xl font-black">چاپ در دسترس نیست</h1><p className="mt-2">برای استفاده از چاپ، ماژول چاپ و مجوز مربوط باید فعال باشند.</p><Link href="/settings/business" className="btn mt-4 inline-flex">بررسی قابلیت‌های کسب‌وکار</Link></section>;
   return <div className="space-y-5">
     <header className="flex flex-col gap-3 rounded-[22px] border border-[#eadfd3] bg-[#fffdf9] p-5 shadow-sm sm:flex-row sm:items-end sm:justify-between">
       <div><p className="mb-1 text-sm font-bold text-[#b9792d]">تنظیمات فروش</p><h1 className="text-3xl font-black">مرکز چاپ و فاکتور ساز</h1><p className="mt-2 text-[#8d8178]">چاپگر حرارتی و قالب فیش مشتری، آشپزخانه و بار را برای هر شعبه تنظیم کنید.</p></div>
-      <div className="flex gap-2"><button className="btn" onClick={() => openTemplate()}>قالب جدید</button><button className="btn btn-primary" onClick={() => openDevice()}>ثبت چاپگر</button></div>
+      <div className="flex gap-2">{mayManage&&<><button className="btn" onClick={() => openTemplate()}>قالب جدید</button><button className="btn btn-primary" onClick={() => openDevice()}>ثبت چاپگر</button></>}</div>
     </header>
+    {!mayManage&&<div role="alert" className="card p-4">حساب فعلی اجازه ساخت یا تغییر قالب چاپ را ندارد. برای مدیریت چاپگر و قالب، مجوز مدیریت چاپ لازم است.</div>}
     {message && <div role="status" className="card border-r-4 border-r-[#b9792d] p-4">{message}</div>}
 
     <section className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -148,7 +160,7 @@ export default function Printing() {
           <label className="text-sm font-bold">رسید مشتری<select className="btn mt-1 w-full" value={receipt} onChange={(event) => setReceipt(event.target.value)}><option value="">چاپگر پیش‌فرض سیستم</option>{osPrinters.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select></label>
           <label className="text-sm font-bold">تیکت آشپزخانه<select className="btn mt-1 w-full" value={kitchen} onChange={(event) => setKitchen(event.target.value)}><option value="">چاپگر پیش‌فرض سیستم</option>{osPrinters.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select></label>
         </div> : <p className="mt-4 rounded-xl bg-[#f7f0e8] p-3 text-sm text-[#8d8178]">چاپگر محلی فقط در برنامهٔ دسکتاپ کافینو نمایش داده می‌شود.</p>}
-        <div className="mt-4 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={saveLocal}>ذخیره انتخاب</button><button className="btn" onClick={() => void printTest()}>چاپ آزمایشی</button></div>
+        <div className="mt-4 flex flex-wrap gap-2"><button className="btn btn-primary" onClick={saveLocal} disabled={!osPrinters.length}>ذخیره انتخاب</button><button className="btn" disabled={!osPrinters.length} onClick={() => void printTest()}>چاپ آزمایشی</button></div>
       </div>
       <div className="card p-5">
         <div className="flex items-center justify-between"><h2 className="font-black text-lg">چاپگرهای ثبت‌شدهٔ شعبه</h2><span className="badge">{branchDevices.length.toLocaleString("fa-IR")} دستگاه</span></div>
@@ -156,9 +168,10 @@ export default function Printing() {
       </div>
     </section>
 
+    <section className="card p-4"><label className="block text-sm font-bold">چاپگر رسید شعبه<select className="btn mt-2 w-full" value={receipt} onChange={e=>setReceipt(e.target.value)}><option value="">انتخاب چاپگر ثبت‌شده</option>{branchDevices.filter(device=>device.is_active&&device.kind==="RECEIPT").map(device=><option key={device.id} value={device.system_name}>{device.name}</option>)}</select></label><p className="mt-2 text-xs text-[#8d8178]">این انتخاب فقط در همین مرورگر ذخیره می‌شود؛ چاپ مستقیم و شناسایی چاپگر فیزیکی ویندوز فقط در نسخه دسکتاپ امکان‌پذیر است.</p><button type="button" className="btn mt-3 min-h-11" disabled={!selectedBranch||!receipt} onClick={()=>{localStorage.setItem(`cafino_receipt_branch_${selectedBranch}`,receipt);setMessage("انتخاب چاپگر ثبت‌شده برای این شعبه در مرورگر ذخیره شد؛ برای چاپ مستقیم از نسخه دسکتاپ استفاده کنید.");}}>ذخیره انتخاب شعبه در این مرورگر</button></section>
     <section className="card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-[#eadfd3] p-4"><div><h2 className="font-black text-lg">قالب‌های فیش و تیکت</h2><p className="mt-1 text-sm text-[#8d8178]">قالب پیش‌فرض هر نوع سند، خودکار در صف چاپ سفارش قرار می‌گیرد.</p></div><button className="btn" onClick={() => openTemplate()}>افزودن قالب</button></div>
-      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">{branchTemplates.length ? branchTemplates.map((template) => <article className="rounded-2xl border border-[#eadfd3] p-4" key={template.id}><div className="flex items-start justify-between gap-2"><div><b>{template.name}</b><span className="mt-1 block text-sm text-[#8d8178]">{typeLabel[template.document_type]}</span></div>{template.is_default && <span className="badge bg-emerald-100 text-emerald-800">پیش‌فرض</span>}</div><p className="mt-3 line-clamp-2 min-h-10 text-sm text-[#8d8178]">{template.header || template.footer || "بدون متن آغاز یا پایان"}</p><div className="mt-3 flex flex-wrap gap-1 text-xs"><span className="badge">{template.layout?.paper_width || 80} میلی‌متر</span><span className="badge">{template.layout?.blocks?.length || defaultReceiptLayout(template.document_type).blocks.length} بخش</span></div><button className="btn mt-4 w-full" onClick={() => openTemplate(template)}>ویرایش قالب</button></article>) : <div className="col-span-full p-8 text-center text-[#8d8178]">هنوز قالبی برای این شعبه ساخته نشده است؛ رسید استاندارد کافینو چاپ می‌شود.</div>}</div>
+      <div className="flex items-center justify-between border-b border-[#eadfd3] p-4"><div><h2 className="font-black text-lg">قالب‌های فیش و تیکت</h2><p className="mt-1 text-sm text-[#8d8178]">قالب پیش‌فرض هر نوع سند، خودکار در صف چاپ سفارش قرار می‌گیرد.</p></div>{mayManage&&<button className="btn" onClick={() => openTemplate()}>افزودن قالب</button>}</div>
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">{branchTemplates.length ? branchTemplates.map((template) => <article className="rounded-2xl border border-[#eadfd3] p-4" key={template.id}><div className="flex items-start justify-between gap-2"><div><b>{template.name}</b><span className="mt-1 block text-sm text-[#8d8178]">{typeLabel[template.document_type]}</span></div>{template.is_default && <span className="badge bg-emerald-100 text-emerald-800">پیش‌فرض</span>}</div><p className="mt-3 line-clamp-2 min-h-10 text-sm text-[#8d8178]">{template.header || template.footer || "بدون متن آغاز یا پایان"}</p><div className="mt-3 flex flex-wrap gap-1 text-xs"><span className="badge">{template.layout?.paper_width || 80} میلی‌متر</span><span className="badge">{template.layout?.blocks?.length || defaultReceiptLayout(template.document_type).blocks.length} بخش</span></div>{mayManage&&<button className="btn mt-4 w-full" onClick={() => openTemplate(template)}>ویرایش قالب</button>}</article>) : <div className="col-span-full p-8 text-center text-[#8d8178]">هنوز قالبی برای این شعبه ساخته نشده است؛ رسید استاندارد کافینو چاپ می‌شود.</div>}</div>
     </section>
 
     <section className="card p-4"><h2 className="font-black text-lg">تاریخچهٔ صف چاپ</h2><div className="mt-3 space-y-2">{jobs.filter((job) => String(job.branch) === selectedBranch).slice(0, 20).map((job) => <div className="flex justify-between border-t border-[#f0e8df] py-2 text-sm" key={job.id}><span>{typeLabel[job.document_type] || job.document_type} · {job.entity_type} {job.entity_id}</span><span className="badge">{label(job.status)}</span></div>)}</div></section>
