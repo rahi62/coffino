@@ -30,7 +30,7 @@ export default function SettingsHome(){
    <Metric label="آمادگی راه‌اندازی" value={`${readiness.overall.score}%`} detail={`${readiness.overall.completed} از ${readiness.overall.total} مورد ضروری`}/>
    <Metric label="موارد ضروری ناقص" value={String(readiness.overall.blocking)} detail={readiness.overall.blocking?"برای راه‌اندازی کامل باید رفع شوند":"تنظیمات ضروری کامل است"}/>
    <Metric label="شعب فعال" value={String(data.branches.filter(b=>b.is_active).length)} detail={branch?`شعبه انتخابی: ${branch.name}`:"هنوز شعبه فعالی ندارید"}/>
-   <Metric label="مدل استقرار / ماژول" value={data.business.deployment_type} detail={`${enabled} ماژول صریحاً فعال`}/>
+   <Metric label="مدل استقرار / ماژول" value={({LOCAL:"محلی",SAAS:"ابری",DEDICATED:"اختصاصی"} as Record<string,string>)[data.business.deployment_type]||"نامشخص"} detail={`${enabled} ماژول صریحاً فعال`}/>
   </div>
 
   <div className="card p-5 mb-5">
