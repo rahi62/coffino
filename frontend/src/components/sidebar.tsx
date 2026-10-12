@@ -7,6 +7,7 @@ import {api,clearToken} from "@/lib/api";
 import {localizeLegacyText,t} from "@/lib/i18n";
 import {reduceMobileNavigation} from "./mobile-navigation-state.mjs";
 import {isPublicRoute} from "@/lib/public-routes.mjs";
+import {mobileActions,permittedActions,routeIsActive} from "@/lib/dashboard-actions.mjs";
 const links:any[]=[
 ["/","داشبورد",LayoutDashboard,null],["/pos","فروش جدید",ShoppingCart,"orders.create"],["/orders","سفارش‌ها",ClipboardList,"orders.view"],["/split-bill","تقسیم صورتحساب",Layers3,"payments.split"],["/order-transfer","انتقال سفارش/میز",ArrowLeftRight,"orders.transfer"],["/tables","سالن و میزها",Armchair,"tables.use"],["/reservations","رزرو میز",CalendarDays,"reservations.manage"],["/takeaway","بیرون‌بر",ShoppingBag,"orders.view"],["/kitchen","آشپزخانه",UtensilsCrossed,"kitchen.view"],
 ["/cashier","صندوق و شیفت",WalletCards,"cashier.use"],["/purchasing","خرید",Truck,"purchasing.view"],["/suppliers","تأمین‌کنندگان",UsersRound,"suppliers.view"],["/expenses","هزینه‌ها",ReceiptText,"expenses.manage"],["/products","محصولات",Boxes,"inventory.manage"],["/recipes","رسپی ساز",FlaskConical,"inventory.manage"],["/inventory","انبار",Package,"inventory.view"],["/inventory-lots","Lot / FEFO",PackageSearch,"inventory.view"],["/inventory-control","شمارش فیزیکی",ClipboardCheck,"inventory.count"],["/lot-count","شمارش Lot",ScanLine,"inventory.lot_count"],["/stock-transfers","انتقال شعب",ArrowRightLeft,"inventory.transfer"],["/production","تولید Batch",Factory,"production.manage"],
@@ -28,7 +29,7 @@ export default function Sidebar(){
  const pathname=usePathname();
  const activeSection=sections.find(section=>section.hrefs.some(href=>href==="/"?pathname==="/":pathname===href||pathname.startsWith(`${href}/`)))?.id||"main";
  const [openSections,setOpenSections]=useState<Record<string,boolean>>(()=>({main:true,[activeSection]:true}));
- useEffect(()=>{const reload=()=>{if(!isPublicRoute(pathname))api<any>("/permissions/me/").then(x=>setPerms(x.permissions)).catch(()=>setPerms({}))};reload();window.addEventListener("cafino-permissions-changed",reload);return()=>window.removeEventListener("cafino-permissions-changed",reload)},[pathname]);
+ useEffect(()=>{const reload=()=>{if(!isPublicRoute(pathname)){setPerms(null);api<any>("/permissions/me/").then(x=>setPerms(x.permissions)).catch(()=>setPerms({}))}};reload();window.addEventListener("cafino-permissions-changed",reload);return()=>window.removeEventListener("cafino-permissions-changed",reload)},[pathname]);
  useEffect(()=>{setOpenSections(current=>({...current,[activeSection]:true}));setMobileOpen(current=>reduceMobileNavigation(current,"navigate"))},[activeSection,pathname]);
  useEffect(()=>{
   if(!mobileOpen)return;
@@ -47,6 +48,14 @@ export default function Sidebar(){
    <div className="min-w-0"><div className="text-lg font-black leading-none">کافینو</div><div className="mt-1 truncate text-[11px] text-white/55">مدیریت کافه و رستوران</div></div>
    <button data-testid="mobile-nav-trigger" type="button" className="grid h-11 w-11 place-items-center rounded-xl bg-white/10 text-white transition hover:bg-white/15" onClick={()=>setMobileOpen(current=>reduceMobileNavigation(current,"open"))} aria-label="باز کردن منوی اصلی" aria-expanded={mobileOpen} aria-controls="cafino-primary-navigation"><Menu size={22} aria-hidden="true"/></button>
   </header>
+  <nav aria-label="ناوبری سریع موبایل" className="fixed inset-x-0 bottom-0 z-30 flex min-h-16 items-stretch justify-around border-t border-[#eadfd3] bg-[#fffdf9] px-1 pt-1 shadow-[0_-5px_18px_rgba(33,23,17,.08)] md:hidden" style={{paddingBottom:"env(safe-area-inset-bottom, 0px)"}}>
+    {permittedActions(mobileActions,perms).map((item:{href:string;label:string})=>{
+      const active=routeIsActive(pathname,item.href);
+      const Icon=item.href==="/"?LayoutDashboard:item.href==="/pos"?ShoppingCart:item.href==="/orders"?ClipboardList:Armchair;
+      return <Link key={item.href} href={item.href} aria-current={active?"page":undefined} className={`flex min-h-14 min-w-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[11px] font-bold ${active?"bg-[#f7e9d5] text-[#89571e]":"text-[#685749]"}`}><Icon aria-hidden="true" size={21}/>{item.label}</Link>;
+    })}
+    {perms===null&&<span role="status" className="flex min-h-14 items-center text-xs text-[#8d8178]">در حال بررسی دسترسی‌ها…</span>}
+  </nav>
 
   <aside aria-label="منوی میان‌بر" className="sidebar-scroll sticky top-0 hidden h-screen w-[76px] shrink-0 flex-col items-center gap-1 overflow-y-auto bg-[#211711] py-3 text-white md:flex xl:hidden">
    <button type="button" aria-label="باز کردن منوی کامل" aria-expanded={mobileOpen} className="mb-2 grid size-12 shrink-0 place-items-center rounded-xl bg-white/10 hover:bg-white/20" onClick={()=>setMobileOpen(current=>reduceMobileNavigation(current,"open"))}><Menu size={22} aria-hidden="true"/></button>

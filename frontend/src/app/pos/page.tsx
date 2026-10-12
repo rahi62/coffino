@@ -21,8 +21,10 @@ export default function POS(){
   const [preview,setPreview]=useState<any>(null),[deferPayment,setDeferPayment]=useState(false),[mixed,setMixed]=useState(false),[singleMethod,setSingleMethod]=useState("POS"),[singleGiftCode,setSingleGiftCode]=useState(""),[singleBankAccount,setSingleBankAccount]=useState(""),[tenders,setTenders]=useState<Tender[]>([{method:"POS",amount:"",payer_label:"نفر ۱"}]),[splitGuests,setSplitGuests]=useState("2");
   const checkoutKey=useRef("");
   const [cartOpen,setCartOpen]=useState(false);
+  const [initialLoading,setInitialLoading]=useState(true);
+  const [initialError,setInitialError]=useState("");
 
-  function load(){Promise.all([api<Product[]>("/products/"),api<Category[]>("/categories/"),api<Table[]>("/tables/"),api<any[]>("/branches/"),api<any[]>("/delivery-zones/"),api<Pager[]>("/pagers/"),api<any[]>("/customers/"),api<BankAccount[]>("/bank-accounts/")]).then(([p,c,t,b,z,pg,cu,accounts])=>{setProducts(p);setCategories(c);setTables(t);setBranches(b);setZones(z);setPagers(pg);setCustomers(cu.filter(customer=>!customer.is_walk_in));setBankAccounts(accounts.filter(account=>account.is_active));if(z[0]&&!deliveryZone)setDeliveryZone(z[0].code)}).catch(()=>{})}
+  function load(){setInitialLoading(true);setInitialError("");Promise.all([api<Product[]>("/products/"),api<Category[]>("/categories/"),api<Table[]>("/tables/"),api<any[]>("/branches/"),api<any[]>("/delivery-zones/"),api<Pager[]>("/pagers/"),api<any[]>("/customers/"),api<BankAccount[]>("/bank-accounts/")]).then(([p,c,t,b,z,pg,cu,accounts])=>{setProducts(p);setCategories(c);setTables(t);setBranches(b);setZones(z);setPagers(pg);setCustomers(cu.filter(customer=>!customer.is_walk_in));setBankAccounts(accounts.filter(account=>account.is_active));if(z[0]&&!deliveryZone)setDeliveryZone(z[0].code)}).catch(e=>{setInitialError(e instanceof Error?e.message:"دریافت اطلاعات فروش ناموفق بود.");}).finally(()=>setInitialLoading(false))}
   useEffect(load,[]);
   const shown=category?products.filter(x=>x.category===category):products;
   const cartCount=Object.values(cart).reduce((a,b)=>a+Number(b||0),0);
@@ -97,6 +99,8 @@ export default function POS(){
     const count=Math.max(2,Math.min(20,Number(splitGuests||2)));const total=Math.round(Number(preview.grand_total));const base=Math.floor(total/count);const rem=total-base*count;
     setMixed(true);setTenders(Array.from({length:count},(_,i)=>({method:"POS",amount:String(base+(i===0?rem:0)),payer_label:`نفر ${i+1}`})));
   }
+  if(initialLoading)return <div role="status" className="card p-5">در حال دریافت محصولات و اطلاعات فروش…</div>;
+  if(initialError)return <section role="alert" className="card border-red-200 p-5"><h1 className="text-xl font-black">فروش در دسترس نیست</h1><p className="mt-2 text-sm text-red-800">{initialError}</p><button type="button" className="btn mt-4 min-h-11" onClick={load}>تلاش دوباره</button></section>;
   return <div className="pb-24 md:flex md:h-[calc(100dvh-2.5rem)] md:flex-col md:pb-0 xl:h-[calc(100dvh-3rem)]">
     <div className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-3 md:mb-3">
       <div><h1 className="text-2xl font-black md:text-3xl">فروش جدید</h1><p className="hidden text-[#8d8178] sm:block">پیش‌نمایش قطعی سامانه ← مالیات و سرویس ← پرداخت ترکیبی ← آماده‌سازی</p></div>
