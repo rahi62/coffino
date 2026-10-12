@@ -53,11 +53,11 @@ export default function GoLivePage(){
             const matched=await api<{check:PrinterRuntime}>("/settings/health/printer/",{method:"POST",body:JSON.stringify({branch:selectedBranchId,devices:names})});
             setPrinterRuntime(matched.check);
           }
-        }catch(e:any){setMessage(`Runtime Local قابل Verify نبود: ${e?.message||e}`)}
+        }catch(e:any){setMessage(`امکان بررسی محیط اجرای محلی وجود ندارد: ${e?.message||e}`)}
       }else if(guard.business.deployment_type!=="LOCAL"){
         setLocal(null);
       }
-    }catch(e:any){setMessage(e.message||"خطا در Go-Live Guard");}
+    }catch(e:any){setMessage(e.message||"خطا در بررسی آمادگی انتشار");}
     finally{setBusy(false)}
   };
   useEffect(()=>{load()},[selectedBranchId]);
@@ -76,29 +76,29 @@ export default function GoLivePage(){
   const deliveryReady=!!data?.summary.ready&&!localBlocked;
 
   const createBackup=async()=>{
-    const bridge=(window as any).cafino;if(!bridge?.createBackup)return setMessage("Backup Local فقط داخل اپ Electron قابل اجراست.");
-    setBusy(true);setMessage("");try{const result=await bridge.createBackup();setBackup(result);if(result.ok)setMessage("بکاپ ایجاد و integrity آن تأیید شد.");else if(!result.canceled)setMessage(result.error||"بکاپ ناموفق بود.");}finally{setBusy(false)}
+    const bridge=(window as any).cafino;if(!bridge?.createBackup)return setMessage("پشتیبان‌گیری محلی فقط در نسخه دسکتاپ برنامه امکان‌پذیر است.");
+    setBusy(true);setMessage("");try{const result=await bridge.createBackup();setBackup(result);if(result.ok)setMessage("نسخه پشتیبان ایجاد شد و درستی آن بررسی شد.");else if(!result.canceled)setMessage(result.error||"بکاپ ناموفق بود.");}finally{setBusy(false)}
   };
   const verifyBackup=async()=>{
-    const bridge=(window as any).cafino;if(!bridge?.verifyBackup)return setMessage("اعتبارسنجی فایل Backup فقط داخل Electron در دسترس است.");
-    setBusy(true);setMessage("");try{const result=await bridge.verifyBackup();setBackup(result);if(result.ok)setMessage("فایل Backup معتبر و قابل Restore است.");else if(!result.canceled)setMessage(result.error||"Backup معتبر نیست.");}finally{setBusy(false)}
+    const bridge=(window as any).cafino;if(!bridge?.verifyBackup)return setMessage("بررسی اعتبار فایل پشتیبان فقط در نسخه دسکتاپ امکان‌پذیر است.");
+    setBusy(true);setMessage("");try{const result=await bridge.verifyBackup();setBackup(result);if(result.ok)setMessage("فایل پشتیبان معتبر و قابل بازیابی است.");else if(!result.canceled)setMessage(result.error||"فایل پشتیبان معتبر نیست.");}finally{setBusy(false)}
   };
   const restoreBackup=async()=>{
-    const bridge=(window as any).cafino;if(!bridge?.restoreBackup)return setMessage("Restore فقط داخل Electron Local در دسترس است.");
-    if(!window.confirm("Restore دیتابیس عملیاتی را جایگزین می‌کند. Cafino قبل از Restore یک Emergency Backup تأییدشده می‌سازد. ادامه می‌دهید؟"))return;
-    setBusy(true);setMessage("");try{const result=await bridge.restoreBackup();setBackup(result);setMessage(result.ok?"Restore با موفقیت انجام و دیتابیس جدید دوباره Verify شد.":result.error||"Restore ناموفق بود.");}finally{setBusy(false)}
+    const bridge=(window as any).cafino;if(!bridge?.restoreBackup)return setMessage("بازیابی اطلاعات فقط در نسخه دسکتاپ امکان‌پذیر است.");
+    if(!window.confirm("بازیابی، اطلاعات کنونی را جایگزین می‌کند. کافینو پیش از بازیابی یک نسخه پشتیبان اضطراری تأییدشده می‌سازد. ادامه می‌دهید؟"))return;
+    setBusy(true);setMessage("");try{const result=await bridge.restoreBackup();setBackup(result);setMessage(result.ok?"بازیابی با موفقیت انجام شد و اطلاعات دوباره بررسی شدند.":result.error||"Restore ناموفق بود.");}finally{setBusy(false)}
   };
 
-  if(!data)return <div className="card p-6">{message||"در حال محاسبه Go-Live Guard…"}</div>;
+  if(!data)return <div className="card p-6">{message||"در حال محاسبه بررسی آمادگی انتشار…"}</div>;
   return <div className="space-y-5">
     <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-      <div><div className="text-xs text-[#8d8178]">Production Delivery</div><h2 className="text-3xl font-black">Go-Live Guard</h2><p className="text-sm text-[#8d8178] mt-1">بررسی نهایی Environment، تنظیمات کسب‌وکار، Integrationها، Backup و Runtime محلی قبل از تحویل به مشتری.</p></div>
+      <div><div className="text-xs text-[#8d8178]">Production Delivery</div><h2 className="text-3xl font-black">بررسی آمادگی انتشار</h2><p className="text-sm text-[#8d8178] mt-1">بررسی نهایی Environment، تنظیمات کسب‌وکار، Integrationها، Backup و Runtime محلی قبل از تحویل به مشتری.</p></div>
       <button className="btn flex items-center gap-2" onClick={load} disabled={busy}><RefreshCw size={16}/>{busy?"در حال بررسی…":"بررسی مجدد"}</button>
     </div>
 
     <div className={`card p-5 border-2 ${deliveryReady?"border-emerald-300":"border-amber-300"}`}>
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-start gap-3">{deliveryReady?<ShieldCheck className="text-emerald-600" size={30}/>:<AlertTriangle className="text-amber-600" size={30}/>}<div><h3 className="font-black text-xl">{deliveryReady?"آماده تحویل":"هنوز آماده Go-Live نیست"}</h3><p className="text-sm text-[#8d8178] mt-1">Backend: {data.summary.blockers} Blocker / {data.summary.warnings} Warning{localRequired?` · Local: ${runtimeErrors} Error / ${runtimeWarnings} Warning`:""}</p>{localRequired&&!local&&<p className="text-xs text-amber-700 mt-1">برای صدور وضعیت Ready در پروفایل Local باید همین صفحه داخل Electron دستگاه مقصد اجرا شود.</p>}{pagerBlocked&&<p className="text-xs text-red-700 mt-1">ماژول PAGER فعال است اما Adapter سخت‌افزار آماده نیست.</p>}{printerBlocked&&<p className="text-xs text-red-700 mt-1">ماژول PRINTING فعال است اما Printer Runtime تأیید نشده است.</p>}</div></div>
+        <div className="flex items-start gap-3">{deliveryReady?<ShieldCheck className="text-emerald-600" size={30}/>:<AlertTriangle className="text-amber-600" size={30}/>}<div><h3 className="font-black text-xl">{deliveryReady?"آماده تحویل":"هنوز برای انتشار آماده نیست"}</h3><p className="text-sm text-[#8d8178] mt-1">Backend: {data.summary.blockers} Blocker / {data.summary.warnings} Warning{localRequired?` · Local: ${runtimeErrors} Error / ${runtimeWarnings} Warning`:""}</p>{localRequired&&!local&&<p className="text-xs text-amber-700 mt-1">برای تأیید آمادگی نسخه محلی، این صفحه را در برنامه دسکتاپ دستگاه مقصد باز کنید.</p>}{pagerBlocked&&<p className="text-xs text-red-700 mt-1">فراخوانی با پیجر فعال است، اما اتصال دستگاه آماده نیست.</p>}{printerBlocked&&<p className="text-xs text-red-700 mt-1">ماژول PRINTING فعال است اما Printer Runtime تأیید نشده است.</p>}</div></div>
         <div className="text-left"><b className="text-4xl">{data.summary.score}%</b><div className="text-xs text-[#8d8178]">Backend delivery score</div></div>
       </div>
       <div className="h-3 rounded-full bg-[#eee6dc] overflow-hidden mt-4"><div className={`h-full ${deliveryReady?"bg-emerald-600":"bg-amber-500"}`} style={{width:`${data.summary.score}%`}}/></div>
@@ -107,19 +107,19 @@ export default function GoLivePage(){
     {profile&&<div className="card p-5">
       <div className="flex items-start gap-3"><ServerCog size={24}/><div><h3 className="font-black text-lg">{profile.title}</h3><p className="text-sm text-[#8d8178] leading-6 mt-1">{profile.summary}</p></div></div>
       <div className="grid md:grid-cols-3 gap-3 mt-4"><Info label="Database" value={profile.database}/><Info label="Internet" value={profile.internet_dependency}/><Info label="Backup" value={profile.backup_strategy}/></div>
-      <div className="mt-4"><div className="text-sm font-bold mb-2">Environment پیشنهادی First-Run</div><div className="rounded-xl bg-[#211711] text-[#f8f1e8] p-4 overflow-x-auto text-xs leading-6 font-mono" dir="ltr">{Object.entries(profile.environment_template).map(([k,v])=><div key={k}>{k}={v}</div>)}</div></div>
+      <div className="mt-4"><div className="text-sm font-bold mb-2">تنظیمات پیشنهادی اجرای نخست</div><div className="rounded-xl bg-[#211711] text-[#f8f1e8] p-4 overflow-x-auto text-xs leading-6 font-mono" dir="ltr">{Object.entries(profile.environment_template).map(([k,v])=><div key={k}>{k}={v}</div>)}</div></div>
       <div className="flex flex-wrap gap-2 mt-4">{profile.capabilities.map(x=><span className="badge" key={x}>{x}</span>)}</div>
     </div>}
 
     <div className="grid xl:grid-cols-2 gap-5">
       <section className="card p-5"><h3 className="font-black text-lg flex items-center gap-2"><ServerCog size={20}/> Server & Security</h3><div className="mt-4 space-y-2">{data.server_checks.map(x=><CheckRow key={x.key} check={x}/>)}</div></section>
-      <section className="card p-5"><h3 className="font-black text-lg flex items-center gap-2"><Workflow size={20}/> Business & Integrations</h3><div className="mt-4 space-y-2">{[...data.business_checks,...data.integration_checks].map((x,i)=><CheckRow key={`${x.branch||0}-${x.key}-${i}`} check={x}/>)}</div><div className="mt-4 rounded-xl bg-[#f5efe8] p-3 text-sm">Setup Readiness: <b>{data.readiness.overall.score}%</b> · {data.readiness.overall.blocking} مورد ضروری ناقص</div></section>
+      <section className="card p-5"><h3 className="font-black text-lg flex items-center gap-2"><Workflow size={20}/> Business & Integrations</h3><div className="mt-4 space-y-2">{[...data.business_checks,...data.integration_checks].map((x,i)=><CheckRow key={`${x.branch||0}-${x.key}-${i}`} check={x}/>)}</div><div className="mt-4 rounded-xl bg-[#f5efe8] p-3 text-sm">وضعیت آمادگی راه‌اندازی: <b>{data.readiness.overall.score}%</b> · {data.readiness.overall.blocking} مورد ضروری ناقص</div></section>
     </div>
 
     <div className="grid xl:grid-cols-[1fr_1fr] gap-5">
       <section className="card p-5">
         <h3 className="font-black text-lg flex items-center gap-2"><HardDrive size={20}/> Local Runtime Preflight</h3>
-        {local?<><div className="mt-4 space-y-2">{local.checks.map(x=><LocalRow key={x.key} check={x}/>)}</div>{printingRequired&&<div className="mt-3"><LocalRow check={{key:"printer_runtime",status:printerRuntime?.status==="ok"?"ok":printerRuntime?.status==="error"?"error":"warning",message:printerRuntime?.message||"Printer Runtime هنوز بررسی نشده است."}}/></div>}<div className="mt-4 text-xs text-[#8d8178]">Electron {local.version} · {local.platform} · {local.packaged?"Packaged":"Development"}</div></>:<div className="mt-4 rounded-xl border p-4 text-sm text-[#8d8178]">این صفحه در Web/SaaS باز شده یا Electron Bridge در دسترس نیست؛ برای پروفایل Local تا اجرای Preflight روی دستگاه مقصد وضعیت Ready صادر نمی‌شود.</div>}
+        {local?<><div className="mt-4 space-y-2">{local.checks.map(x=><LocalRow key={x.key} check={x}/>)}</div>{printingRequired&&<div className="mt-3"><LocalRow check={{key:"printer_runtime",status:printerRuntime?.status==="ok"?"ok":printerRuntime?.status==="error"?"error":"warning",message:printerRuntime?.message||"اتصال چاپگر هنوز بررسی نشده است."}}/></div>}<div className="mt-4 text-xs text-[#8d8178]">Electron {local.version} · {local.platform} · {local.packaged?"Packaged":"Development"}</div></>:<div className="mt-4 rounded-xl border p-4 text-sm text-[#8d8178]">این صفحه در Web/SaaS باز شده یا Electron Bridge در دسترس نیست؛ برای پروفایل Local تا اجرای Preflight روی دستگاه مقصد وضعیت Ready صادر نمی‌شود.</div>}
       </section>
       <section className="card p-5">
         <h3 className="font-black text-lg flex items-center gap-2"><Usb size={20}/> Device Adapter Registry</h3>
