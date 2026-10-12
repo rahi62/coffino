@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {useEffect,useMemo,useState} from "react";
+import {useEffect,useMemo,useRef,useState} from "react";
 import {CheckCircle2,CircleAlert,Globe2,MessageSquare,ReceiptText,Settings2,Store} from "lucide-react";
 
 import {SettingsReadiness,useSettings} from "@/components/settings/settings-context";
@@ -28,19 +28,37 @@ type FormState={
 };
 
 const moduleLabels:Record<string,string>={
- POS:"فروش و صندوق",DINE_IN:"سالن",TAKEAWAY:"بیرون‌بر",KITCHEN_DISPLAY:"KDS",INVENTORY:"انبار",RECIPES:"رسپی",
+ POS:"فروش و صندوق",DINE_IN:"سالن",TAKEAWAY:"بیرون‌بر",KITCHEN_DISPLAY:"نمایش سفارش‌های آشپزخانه",INVENTORY:"انبار",RECIPES:"دستور تهیه",
  PRODUCTION:"تولید",PURCHASING:"خرید",ACCOUNTING:"مالی مدیریتی",CUSTOMERS:"مشتریان",LOYALTY:"وفاداری",REPORTING:"گزارش‌ها",
  PRINTING:"چاپ",RESERVATION:"رزرو",MULTI_BRANCH:"چندشعبه",ONLINE_ORDERING:"سفارش آنلاین",DELIVERY:"ارسال",
  PAYMENT_GATEWAY:"درگاه پرداخت",NOTIFICATIONS:"اعلان‌ها",SMS:"پیامک"
 };
 
-const deploymentLabels:Record<string,string>={LOCAL:"محلی / ویندوز",SAAS:"Cloud SaaS",DEDICATED:"Dedicated Managed"};
+const deploymentLabels:Record<string,string>={LOCAL:"محلی / ویندوز",SAAS:"ابری",DEDICATED:"اختصاصی مدیریت‌شده"};
 
 export default function OnboardingPage(){
  const {data,selectedBranchId,setSelectedBranchId,refresh}=useSettings();
  const [presets,setPresets]=useState<Preset[]>([]);
  const [presetKey,setPresetKey]=useState("");
  const [step,setStep]=useState(1);
+ const restoredBusiness=useRef<number|null>(null);
+ const progressKey=(id:number)=>`cafino_onboarding_progress_${id}`;
+ const goToStep=(next:number)=>{
+   const bounded=Math.max(1,Math.min(4,next));
+   setStep(bounded);
+   if(data?.business.id&&typeof window!=="undefined"){
+     try{sessionStorage.setItem(progressKey(data.business.id),String(bounded===4?3:bounded))}catch{}
+   }
+ };
+ useEffect(()=>{
+   const id=data?.business.id;
+   if(!id||restoredBusiness.current===id)return;
+   restoredBusiness.current=id;
+   try{
+     const persisted=Number(sessionStorage.getItem(progressKey(id))||1);
+     setStep(persisted>=1&&persisted<=3?persisted:1);
+   }catch{setStep(1)}
+ },[data?.business.id]);
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState("");
  const [result,setResult]=useState<ApplyResult|null>(null);
@@ -93,7 +111,7 @@ export default function OnboardingPage(){
        hall_name:form.hall_name,table_count:Number(form.table_count||0),table_capacity:Number(form.table_capacity||4),
        create_stations:form.create_stations,create_online_settings:form.create_online_settings,
      })});
-     setResult(response);setSelectedBranchId(response.branch.id);setStep(4);await refresh();
+     setResult(response);setSelectedBranchId(response.branch.id);goToStep(4);await refresh();
      await runسلامت(false,response.branch.id);
    }catch(e:any){setMessage(e.message||"راه‌اندازی انجام نشد")}
    finally{setBusy(false)}
@@ -127,18 +145,18 @@ export default function OnboardingPage(){
  if(!data)return null;
  return <div>
    <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-     <div><h2 className="text-3xl font-black">راه‌اندازی هوشمند Cafino</h2><p className="text-[#8d8178] mt-1">Preset مناسب را انتخاب کن؛ Cafino فقط تنظیمات امن و قابل بازگشت را Bootstrap می‌کند و داده واقعی منو/انبار را جعل نمی‌کند.</p></div>
+     <div><h2 className="text-2xl font-black sm:text-3xl">راه‌اندازی هوشمند کافینو</h2><p className="mt-1 text-sm leading-7 text-[#8d8178]">نوع کسب‌وکار را انتخاب کنید تا قابلیت‌ها و تنظیمات اولیه به‌صورت خودکار آماده شوند. محصولات، قیمت‌ها و موجودی باید با اطلاعات واقعی شما تکمیل شوند.</p></div>
      <Link href="/settings" className="btn">بازگشت به مرکز تنظیمات</Link>
    </div>
 
-   <div className="grid grid-cols-4 gap-2 mb-5">{["نوع کسب‌وکار","شعبه و استقرار","Bootstrap","تست و تکمیل"].map((label,index)=>{const n=index+1;const active=step===n;const done=step>n;return <button key={label} onClick={()=>n<step&&setStep(n)} className={`rounded-xl border p-3 text-right ${active?"bg-[#211711] text-white":done?"bg-emerald-50 border-emerald-200":"bg-white"}`}><span className="text-xs opacity-70">مرحله {n}</span><b className="block text-sm mt-1">{label}</b></button>})}</div>
+   <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="مراحل راه‌اندازی">{["نوع کسب‌وکار","شعبه و استقرار","تنظیمات اولیه","بررسی و تکمیل"].map((label,index)=>{const n=index+1;const active=step===n;const done=step>n;return <button key={label} onClick={()=>n<step&&goToStep(n)} className={`min-h-16 min-w-0 rounded-xl border p-3 text-right ${active?"bg-[#211711] text-white":done?"bg-emerald-50 border-emerald-200":"bg-white"}`}><span className="text-xs opacity-70">مرحله {n}</span><b className="mt-1 block break-words text-sm leading-6">{label}</b></button>})}</div>
 
    {message&&<div className="card p-3 mb-4 border-amber-200">{message}</div>}
 
    {step===1&&<section className="card p-5">
-     <div className="flex items-center gap-2 mb-1"><Settings2 size={20}/><h3 className="font-black text-lg">Preset عملیاتی</h3></div><p className="text-sm text-[#8d8178] mb-4">Preset فقط ماژول‌ها و Defaultهای امن را تعیین می‌کند؛ هر قابلیت بعداً مستقل قابل تغییر است.</p>
+     <div className="flex items-center gap-2 mb-1"><Settings2 size={20}/><h3 className="font-black text-lg">الگوی پیشنهادی کسب‌وکار</h3></div><p className="text-sm text-[#8d8178] mb-4">این الگو قابلیت‌های پیشنهادی و تنظیمات اولیه را انتخاب می‌کند. بعداً می‌توانید هر قابلیت را جداگانه تغییر دهید.</p>
      <div className="grid md:grid-cols-2 2xl:grid-cols-3 gap-3">{presets.map(p=><button key={p.key} onClick={()=>choosePreset(p.key)} className={`text-right border rounded-xl p-4 ${presetKey===p.key?"border-[#211711] ring-2 ring-[#211711]/10":"border-[#eadfd3]"}`}><div className="flex justify-between gap-2"><b className="text-lg">{p.label}</b>{presetKey===p.key&&<CheckCircle2 size={19} className="text-emerald-600"/>}</div><p className="text-sm text-[#8d8178] leading-6 mt-2">{p.description}</p><div className="flex flex-wrap gap-1 mt-3">{p.modules.slice(0,6).map(m=><span className="badge" key={m}>{moduleLabels[m]||m}</span>)}{p.modules.length>6&&<span className="badge">+{p.modules.length-6}</span>}</div></button>)}</div>
-     <div className="flex justify-end mt-5"><button className="btn btn-primary" disabled={!preset} onClick={()=>setStep(2)}>مرحله بعد</button></div>
+     <div className="flex justify-end mt-5"><button className="btn btn-primary" disabled={!preset} onClick={()=>goToStep(2)}>مرحله بعد</button></div>
    </section>}
 
    {step===2&&<section className="card p-5">
@@ -149,33 +167,33 @@ export default function OnboardingPage(){
        <label className="text-sm">تلفن<input className="border rounded-xl p-2 w-full mt-1" value={form.branch_phone} onChange={e=>setForm({...form,branch_phone:e.target.value})}/></label>
        <label className="text-sm lg:col-span-2">آدرس<textarea className="border rounded-xl p-2 w-full mt-1" value={form.branch_address} onChange={e=>setForm({...form,branch_address:e.target.value})}/></label>
      </div>
-     <div className="flex justify-between mt-5"><button className="btn" onClick={()=>setStep(1)}>قبلی</button><button className="btn btn-primary" onClick={()=>setStep(3)}>مرحله بعد</button></div>
+     <div className="flex justify-between mt-5"><button className="btn" onClick={()=>goToStep(1)}>قبلی</button><button className="btn btn-primary" onClick={()=>goToStep(3)}>مرحله بعد</button></div>
    </section>}
 
    {step===3&&preset&&<section className="space-y-5">
-     <div className="card p-5"><h3 className="font-black text-lg">ماژول‌های Preset «{preset.label}»</h3><div className="flex flex-wrap gap-2 mt-3">{preset.modules.map(m=><span key={m} className="badge">{moduleLabels[m]||m}</span>)}</div><label className="mt-4 border rounded-xl p-3 flex gap-2 items-start"><input type="checkbox" checked={form.replace_modules} onChange={e=>setForm({...form,replace_modules:e.target.checked})}/><span><b className="text-sm">Preset جایگزین انتخاب ماژول‌های فعلی شود</b><span className="block text-xs text-[#8d8178] mt-1">خاموش‌شدن ماژول داده‌های آن را حذف نمی‌کند. اگر این گزینه خاموش باشد فقط ماژول‌های Preset به تنظیمات فعلی اضافه می‌شوند.</span></span></label></div>
+     <div className="card p-5"><h3 className="font-black text-lg">قابلیت‌های پیشنهادی «{preset.label}»</h3><div className="flex flex-wrap gap-2 mt-3">{preset.modules.map(m=><span key={m} className="badge">{moduleLabels[m]||m}</span>)}</div><label className="mt-4 border rounded-xl p-3 flex gap-2 items-start"><input type="checkbox" checked={form.replace_modules} onChange={e=>setForm({...form,replace_modules:e.target.checked})}/><span><b className="text-sm">قابلیت‌های پیشنهادی جایگزین قابلیت‌های فعال فعلی شوند</b><span className="block text-xs text-[#8d8178] mt-1">خاموش‌شدن ماژول داده‌های آن را حذف نمی‌کند. اگر این گزینه خاموش باشد، فقط قابلیت‌های پیشنهادی به تنظیمات فعلی اضافه می‌شوند.</span></span></label></div>
      <div className="grid xl:grid-cols-2 gap-5">
-       {has("POS")&&<div className="card p-5"><h3 className="font-black">Default صندوق</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_register} onChange={e=>setForm({...form,create_register:e.target.checked})}/> اگر صندوق فعال وجود ندارد، یکی بساز</label>{form.create_register&&<input className="border rounded-xl p-2 w-full mt-3" value={form.register_name} onChange={e=>setForm({...form,register_name:e.target.value})}/>}</div>}
+       {has("POS")&&<div className="card p-5"><h3 className="font-black">صندوق اولیه</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_register} onChange={e=>setForm({...form,create_register:e.target.checked})}/> اگر صندوق فعال وجود ندارد، یکی بساز</label>{form.create_register&&<input className="border rounded-xl p-2 w-full mt-3" value={form.register_name} onChange={e=>setForm({...form,register_name:e.target.value})}/>}</div>}
        {has("DINE_IN")&&<div className="card p-5"><h3 className="font-black">سالن و میز اولیه</h3><div className="grid grid-cols-3 gap-2 mt-3"><input className="border rounded-xl p-2 col-span-3" value={form.hall_name} onChange={e=>setForm({...form,hall_name:e.target.value})} placeholder="نام سالن"/><label className="text-xs">تعداد میز<input type="number" min="0" max="200" className="border rounded-xl p-2 w-full mt-1" value={form.table_count} onChange={e=>setForm({...form,table_count:e.target.value})}/></label><label className="text-xs">ظرفیت<input type="number" min="1" max="30" className="border rounded-xl p-2 w-full mt-1" value={form.table_capacity} onChange={e=>setForm({...form,table_capacity:e.target.value})}/></label></div></div>}
-       {has("KITCHEN_DISPLAY")&&<div className="card p-5"><h3 className="font-black">ایستگاه‌های آماده‌سازی</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_stations} onChange={e=>setForm({...form,create_stations:e.target.checked})}/> ایستگاه‌های پیشنهادی Preset ساخته شوند</label><div className="flex flex-wrap gap-1 mt-3">{preset.stations.map(x=><span className="badge" key={x}>{x}</span>)}</div></div>}
-       {has("ONLINE_ORDERING")&&<div className="card p-5"><h3 className="font-black">منوی آنلاین</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_online_settings} onChange={e=>setForm({...form,create_online_settings:e.target.checked})}/> تنظیمات اولیه Slug/QR ساخته شود</label><p className="text-xs text-[#8d8178] mt-2">پذیرش سفارش عمداً خودکار روشن نمی‌شود؛ بعد از تکمیل منو و بررسی سلامت آن را فعال کن.</p></div>}
+       {has("KITCHEN_DISPLAY")&&<div className="card p-5"><h3 className="font-black">ایستگاه‌های آماده‌سازی</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_stations} onChange={e=>setForm({...form,create_stations:e.target.checked})}/> ایستگاه‌های پیشنهادی ساخته شوند</label><div className="flex flex-wrap gap-1 mt-3">{preset.stations.map(x=><span className="badge" key={x}>{x}</span>)}</div></div>}
+       {has("ONLINE_ORDERING")&&<div className="card p-5"><h3 className="font-black">منوی آنلاین</h3><label className="flex gap-2 mt-3"><input type="checkbox" checked={form.create_online_settings} onChange={e=>setForm({...form,create_online_settings:e.target.checked})}/> تنظیمات نشانی منوی آنلاین و کد اسکن ساخته شود</label><p className="text-xs text-[#8d8178] mt-2">پذیرش سفارش عمداً خودکار روشن نمی‌شود؛ بعد از تکمیل منو و بررسی سلامت آن را فعال کن.</p></div>}
      </div>
-     <div className="card p-4 flex items-start gap-2"><CircleAlert size={18} className="text-amber-600 shrink-0"/><p className="text-sm leading-6">Cafino در Wizard محصول، قیمت، موجودی یا رسپی ساختگی ایجاد نمی‌کند. این داده‌ها باید واقعی باشند و Readiness بعد از Apply موارد باقی‌مانده را نشان می‌دهد.</p></div>
-     <div className="flex justify-between"><button className="btn" onClick={()=>setStep(2)}>قبلی</button><button className="btn btn-primary" disabled={busy} onClick={apply}>{busy?"در حال اعمال…":"اعمال الگوی انتخابی و راه‌اندازی"}</button></div>
+     <div className="card p-4 flex items-start gap-2"><CircleAlert size={18} className="text-amber-600 shrink-0"/><p className="text-sm leading-6">کافینو محصول، قیمت، موجودی یا دستور تهیه ساختگی ایجاد نمی‌کند. بعد از اعمال تنظیمات، موارد تکمیل‌نشده نمایش داده می‌شوند.</p></div>
+     <div className="flex justify-between"><button className="btn" onClick={()=>goToStep(2)}>قبلی</button><button className="btn btn-primary" disabled={busy} onClick={apply}>{busy?"در حال اعمال…":"اعمال الگوی انتخابی و راه‌اندازی"}</button></div>
    </section>}
 
    {step===4&&<section className="space-y-5">
-     <div className="card p-5"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex gap-2 items-center"><CheckCircle2 className="text-emerald-600"/><h3 className="font-black text-lg">Bootstrap انجام شد</h3></div><p className="text-sm text-[#8d8178] mt-1">{result?`${result.business.name} — ${result.branch.name}`:"برای شعبه انتخابی می‌توانی بررسی سلامت را اجرا کنی."}</p></div>{result&&<div className="text-left"><b className="text-3xl">{result.readiness.overall.score}%</b><div className="text-xs text-[#8d8178]">وضعیت آمادگی راه‌اندازی</div></div>}</div>
+     <div className="card p-5"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><div className="flex gap-2 items-center"><CheckCircle2 className="text-emerald-600"/><h3 className="font-black text-lg">تنظیمات اولیه اعمال شد</h3></div><p className="text-sm text-[#8d8178] mt-1">{result?`${result.business.name} — ${result.branch.name}`:"برای شعبه انتخابی می‌توانی بررسی سلامت را اجرا کنی."}</p></div>{result&&<div className="text-left"><b className="text-3xl">{result.readiness.overall.score}%</b><div className="text-xs text-[#8d8178]">وضعیت آمادگی راه‌اندازی</div></div>}</div>
        {result&&<div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 mt-4"><SmallMetric label="صندوق" value={result.created.register?"ساخته شد":"موجود/رد شد"}/><SmallMetric label="میز جدید" value={String(result.created.tables)}/><SmallMetric label="Station جدید" value={String(result.created.stations)}/><SmallMetric label="برخط Config" value={result.created.online_settings?"ساخته شد":"موجود/رد شد"}/><SmallMetric label="Blocker" value={String(result.readiness.overall.blocking)}/></div>}
      </div>
 
-     <div className="card p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-black text-lg">بررسی سلامت اتصال‌ها</h3><p className="text-sm text-[#8d8178] mt-1">Config Check هیچ پیام یا پرداختی ایجاد نمی‌کند؛ Live Check فقط HEAD امن برای سنجش Reachability می‌فرستد.</p></div><div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={()=>runسلامت(false)}>Config Check</button><button className="btn btn-primary" disabled={busy} onClick={()=>runسلامت(true)}>Live Network Check</button><button className="btn" disabled={busy} onClick={runPrinterسلامت}>Local Printer Check</button></div></div>
+     <div className="card p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-black text-lg">بررسی سلامت اتصال‌ها</h3><p className="text-sm text-[#8d8178] mt-1">بررسی تنظیمات هیچ پیامک یا پرداختی ایجاد نمی‌کند. بررسی اتصال شبکه فقط دسترسی به سرویس‌ها را می‌سنجد.</p></div><div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={()=>runسلامت(false)}>بررسی تنظیمات</button><button className="btn btn-primary" disabled={busy} onClick={()=>runسلامت(true)}>بررسی اتصال شبکه</button><button className="btn" disabled={busy} onClick={runPrinterسلامت}>بررسی چاپگر محلی</button></div></div>
        {health&&<><div className="grid grid-cols-3 gap-2 mt-4"><SmallMetric label="سالم" value={String(health.summary.ok)}/><SmallMetric label="هشدار" value={String(health.summary.warning)}/><SmallMetric label="خطا" value={String(health.summary.error)}/></div><div className="space-y-2 mt-4">{health.checks.map(x=><سلامتRow key={x.key} check={x}/>)}{printerسلامت&&<سلامتRow check={printerسلامت}/>}</div></>}
        {!health&&<div className="border rounded-xl p-4 text-sm text-[#8d8178] mt-4">هنوز بررسی سلامت اجرا نشده است.</div>}
      </div>
 
-     <div className="grid md:grid-cols-3 gap-4"><ActionCard icon={<Globe2 size={19}/>} title="سفارش آنلاین" href="/settings/online" text="منو، Delivery Zone و درگاه را تکمیل کن."/><ActionCard icon={<MessageSquare size={19}/>} title="اعلان‌ها" href="/settings/notifications" text="SMS و Push Provider را تنظیم و بررسی کن."/><ActionCard icon={<ReceiptText size={19}/>} title="چاپ" href="/printing" text="System Name و قالب رسید/آشپزخانه را نهایی کن."/></div>
-     <div className="flex justify-between"><button className="btn" onClick={()=>setStep(3)}>بازگشت به تنظیمات Wizard</button><Link className="btn btn-primary" href="/settings">مشاهده Checklist کامل</Link></div>
+     <div className="grid md:grid-cols-3 gap-4"><ActionCard icon={<Globe2 size={19}/>} title="سفارش آنلاین" href="/settings/online" text="منو، محدوده ارسال و درگاه پرداخت را تکمیل کنید."/><ActionCard icon={<MessageSquare size={19}/>} title="اعلان‌ها" href="/settings/notifications" text="تنظیمات پیامک و اعلان دستگاه را تکمیل کنید."/><ActionCard icon={<ReceiptText size={19}/>} title="چاپ" href="/printing" text="نام چاپگر و قالب رسید و برگه آشپزخانه را تنظیم کنید."/></div>
+     <div className="flex justify-between"><button className="btn" onClick={()=>goToStep(3)}>بازگشت به تنظیمات اولیه</button><Link className="btn btn-primary" href="/settings">مشاهده فهرست کامل</Link></div>
    </section>}
  </div>
 }
