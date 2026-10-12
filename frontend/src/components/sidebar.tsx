@@ -49,7 +49,7 @@ export default function Sidebar(){
    <button data-testid="mobile-nav-trigger" type="button" className="grid h-11 w-11 place-items-center rounded-xl bg-white/10 text-white transition hover:bg-white/15" onClick={()=>setMobileOpen(current=>reduceMobileNavigation(current,"open"))} aria-label="باز کردن منوی اصلی" aria-expanded={mobileOpen} aria-controls="cafino-primary-navigation"><Menu size={22} aria-hidden="true"/></button>
   </header>
   <nav aria-label="ناوبری سریع موبایل" className="fixed inset-x-0 bottom-0 z-30 flex min-h-16 items-stretch justify-around border-t border-[#eadfd3] bg-[#fffdf9] px-1 pt-1 shadow-[0_-5px_18px_rgba(33,23,17,.08)] md:hidden" style={{paddingBottom:"env(safe-area-inset-bottom, 0px)"}}>
-    {permittedActions(mobileActions,perms).map(item=>{
+    {permittedActions(mobileActions,perms).map((item:{href:string;label:string})=>{
       const active=routeIsActive(pathname,item.href);
       const Icon=item.href==="/"?LayoutDashboard:item.href==="/pos"?ShoppingCart:item.href==="/orders"?ClipboardList:Armchair;
       return <Link key={item.href} href={item.href} aria-current={active?"page":undefined} className={`flex min-h-14 min-w-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[11px] font-bold ${active?"bg-[#f7e9d5] text-[#89571e]":"text-[#685749]"}`}><Icon aria-hidden="true" size={21}/>{item.label}</Link>;
