@@ -24,7 +24,24 @@ export default function POS(){
   const [initialLoading,setInitialLoading]=useState(true);
   const [initialError,setInitialError]=useState("");
 
-  function load(){setInitialLoading(true);setInitialError("");Promise.all([api<Product[]>("/products/"),api<Category[]>("/categories/"),api<Table[]>("/tables/"),api<any[]>("/branches/"),api<any[]>("/delivery-zones/"),api<Pager[]>("/pagers/"),api<any[]>("/customers/"),api<BankAccount[]>("/bank-accounts/")]).then(([p,c,t,b,z,pg,cu,accounts])=>{setProducts(p);setCategories(c);setTables(t);setBranches(b);setZones(z);setPagers(pg);setCustomers(cu.filter(customer=>!customer.is_walk_in));setBankAccounts(accounts.filter(account=>account.is_active));if(z[0]&&!deliveryZone)setDeliveryZone(z[0].code)}).catch(e=>{setInitialError(e instanceof Error?e.message:"دریافت اطلاعات فروش ناموفق بود.");}).finally(()=>setInitialLoading(false))}
+  function load(){
+    setInitialLoading(true);setInitialError("");
+    // Core POS data remains required. Bank accounts are optional metadata and
+    // /bank-accounts/ is not currently registered in the backend API router.
+    Promise.all([
+      api<Product[]>("/products/"),api<Category[]>("/categories/"),
+      api<Table[]>("/tables/"),api<any[]>("/branches/"),
+      api<any[]>("/delivery-zones/"),api<Pager[]>("/pagers/"),
+      api<any[]>("/customers/")
+    ]).then(([p,c,t,b,z,pg,cu])=>{
+      setProducts(p);setCategories(c);setTables(t);setBranches(b);
+      setZones(z);setPagers(pg);setCustomers(cu.filter(customer=>!customer.is_walk_in));
+      setBankAccounts([]);
+      if(z[0]&&!deliveryZone)setDeliveryZone(z[0].code);
+    }).catch(e=>{
+      setInitialError(e instanceof Error?e.message:"دریافت اطلاعات فروش ناموفق بود.");
+    }).finally(()=>setInitialLoading(false));
+  }
   useEffect(load,[]);
   const shown=category?products.filter(x=>x.category===category):products;
   const cartCount=Object.values(cart).reduce((a,b)=>a+Number(b||0),0);
