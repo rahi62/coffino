@@ -66,7 +66,7 @@ export default function OnboardingPage(){
  const [printerسلامت,setPrinterسلامت]=useState<سلامتCheck|null>(null);
  const [form,setForm]=useState<FormState>({
    branch:"",branch_name:"",branch_phone:"",branch_address:"",deployment_type:"LOCAL",
-   replace_modules:true,create_register:true,register_name:"صندوق اصلی",hall_name:"سالن اصلی",table_count:"0",table_capacity:"4",
+   replace_modules:false,create_register:true,register_name:"صندوق اصلی",hall_name:"سالن اصلی",table_count:"0",table_capacity:"4",
    create_stations:true,create_online_settings:true,
  });
 
@@ -146,7 +146,7 @@ export default function OnboardingPage(){
  return <div>
    <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
      <div><h2 className="text-2xl font-black sm:text-3xl">راه‌اندازی هوشمند کافینو</h2><p className="mt-1 text-sm leading-7 text-[#8d8178]">نوع کسب‌وکار را انتخاب کنید تا قابلیت‌ها و تنظیمات اولیه به‌صورت خودکار آماده شوند. محصولات، قیمت‌ها و موجودی باید با اطلاعات واقعی شما تکمیل شوند.</p></div>
-     <Link href="/settings" className="btn">بازگشت به مرکز تنظیمات</Link>
+     <div className="flex flex-wrap gap-2"><Link href="/settings" className="btn min-h-11">بعداً تکمیل می‌کنم</Link><Link href="/" className="btn min-h-11">رفتن به داشبورد</Link></div>
    </div>
 
    <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="مراحل راه‌اندازی">{["نوع کسب‌وکار","شعبه و استقرار","تنظیمات اولیه","بررسی و تکمیل"].map((label,index)=>{const n=index+1;const active=step===n;const done=step>n;return <button key={label} onClick={()=>n<step&&goToStep(n)} className={`min-h-16 min-w-0 rounded-xl border p-3 text-right ${active?"bg-[#211711] text-white":done?"bg-emerald-50 border-emerald-200":"bg-white"}`}><span className="text-xs opacity-70">مرحله {n}</span><b className="mt-1 block break-words text-sm leading-6">{label}</b></button>})}</div>
