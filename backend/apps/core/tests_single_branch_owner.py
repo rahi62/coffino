@@ -2,7 +2,7 @@ from django.core.exceptions import PermissionDenied
 from django.test import TestCase
 
 from apps.accounts.models import User
-from apps.businesses.models import Branch, Business
+from apps.businesses.models import Branch, Business, BusinessModule
 from apps.core.tenancy import can_access_branch, resolve_branch_for_user
 
 
@@ -10,6 +10,7 @@ class SingleBranchOwnerTests(TestCase):
     def setUp(self):
         self.business = Business.objects.create(name="Single branch cafe")
         self.branch = Branch.objects.create(business=self.business, name="Main", is_active=True)
+        BusinessModule.objects.create(business=self.business, key="MULTI_BRANCH", enabled=False)
         self.owner = User.objects.create_user(
             username="branchless-owner", password="test-password",
             business=self.business, role=User.Role.OWNER,
