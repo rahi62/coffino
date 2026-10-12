@@ -21,7 +21,7 @@ const nav=[
 
 function Inner({children}:{children:React.ReactNode}){
  const path=usePathname();const {data,loading,error,selectedBranchId,setSelectedBranchId,can}=useSettings();
- if(loading)return <div className="card p-6">در حال بارگذاری تنظیمات…</div>;
+ if(loading&&!data)return <div className="card p-6">در حال بارگذاری تنظیمات…</div>;
  if(error)return <div className="card p-6 border-red-200"><b>دسترسی به تنظیمات ممکن نیست.</b><div className="text-sm text-red-700 mt-2">{error}</div></div>;
  if(!data)return null;
  const items=nav.filter(x=>!x[3]||can(x[3]));
