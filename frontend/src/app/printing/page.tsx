@@ -6,7 +6,7 @@ import ThermalReceiptDesigner, {defaultReceiptLayout, DocumentType, ThermalLayou
 import {api} from "@/lib/api";
 import {label} from "@/lib/i18n";
 import Link from "next/link";
-import {useSettings} from "@/components/settings/settings-context";
+
 
 type Device = {id: number; branch: number; name: string; system_name: string; kind: string; paper_width: number; is_active: boolean};
 type Template = {
@@ -23,9 +23,11 @@ const deviceEmpty = {name: "", system_name: "", kind: "RECEIPT", paper_width: "8
 const typeLabel: Record<string, string> = {RECEIPT: "رسید مشتری", KITCHEN: "تیکت آشپزخانه", BAR: "تیکت بار"};
 
 export default function Printing() {
-  const {data:settings,selectedBranchId,can,loading:permissionsLoading}=useSettings();
-  const mayManage=can("printing.manage");
-  const mayUse=can("printing.use");
+  const [permissions,setPermissions]=useState<Record<string,boolean>|null>(null);
+  const [permissionsLoading,setPermissionsLoading]=useState(true);
+  const mayManage=permissions?.["printing.manage"]===true;
+  const mayUse=permissions?.["printing.use"]===true;
+  useEffect(()=>{api<{permissions:Record<string,boolean>}>("/permissions/me/").then(x=>setPermissions(x.permissions)).catch(()=>setPermissions({})).finally(()=>setPermissionsLoading(false))},[]);
   const [osPrinters, setOsPrinters] = useState<any[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -43,7 +45,7 @@ export default function Printing() {
   const [templateForm, setTemplateForm] = useState<TemplateForm>(newTemplate);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
 
-  const selectedBranch = branch || String(selectedBranchId || branches[0]?.id || "");
+  const selectedBranch = branch || String(branches[0]?.id || "");
   const branchDevices = useMemo(() => devices.filter((device) => String(device.branch) === selectedBranch), [devices, selectedBranch]);
   const branchTemplates = useMemo(() => templates.filter((template) => String(template.branch) === selectedBranch), [templates, selectedBranch]);
   const activeReceiptDevice = branchDevices.find((device) => device.system_name === receipt) || branchDevices.find((device) => device.kind === "RECEIPT");
@@ -58,7 +60,7 @@ export default function Printing() {
       setTemplates(nextTemplates);
       setJobs(nextJobs);
       setBranches(nextBranches);
-      if (!branch && selectedBranchId) setBranch(String(selectedBranchId));
+      if (!branch) {const stored=Number(localStorage.getItem("cafino_settings_branch")||0);const candidate=nextBranches.find(x=>x.id===stored)||nextBranches[0];if(candidate)setBranch(String(candidate.id));}
       setReceipt(localStorage.getItem("cafino_receipt_printer") || "");
       setKitchen(localStorage.getItem("cafino_kitchen_printer") || "");
       const desktop = (window as any).cafino;
@@ -135,7 +137,7 @@ export default function Printing() {
     setMessage(result?.ok ? "برگهٔ آزمایشی به چاپگر ارسال شد." : `چاپ آزمایشی انجام نشد: ${result?.error || "خطای نامشخص"}`);
   };
 
-  if (permissionsLoading || !settings) return <div role="status" className="card p-5">در حال بررسی دسترسی چاپ…</div>;
+  if (permissionsLoading) return <div role="status" className="card p-5">در حال بررسی دسترسی چاپ…</div>;
   if (!mayManage && !mayUse) return <section role="alert" className="card p-5"><h1 className="text-xl font-black">چاپ در دسترس نیست</h1><p className="mt-2">برای استفاده از چاپ، ماژول چاپ و مجوز مربوط باید فعال باشند.</p><Link href="/settings/business" className="btn mt-4 inline-flex">بررسی قابلیت‌های کسب‌وکار</Link></section>;
   return <div className="space-y-5">
     <header className="flex flex-col gap-3 rounded-[22px] border border-[#eadfd3] bg-[#fffdf9] p-5 shadow-sm sm:flex-row sm:items-end sm:justify-between">
