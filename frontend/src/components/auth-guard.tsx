@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 import {usePathname} from "next/navigation";
 import {api} from "@/lib/api";
 import {clearSession,hasStoredSession} from "@/lib/auth";
@@ -9,22 +9,25 @@ type AuthState="checking"|"ready"|"error";
 export default function AuthGuard({children}:{children:React.ReactNode}){
  const pathname=usePathname();
  const [state,setState]=useState<AuthState>("checking");
+ const verified=useRef(false);
 
  useEffect(()=>{
-  if(isPublicRoute(pathname)){setState("ready");return}
-  if(!hasStoredSession()){location.replace("/login");return}
+  if(isPublicRoute(pathname)){verified.current=false;setState("ready");return}
+  if(!hasStoredSession()){verified.current=false;location.replace("/login");return}
+  // Navigation within the authenticated app must not blank the entire layout.
+  if(verified.current)return;
 
   let cancelled=false;
   setState("checking");
   api("/me/").then(()=>{
-   if(!cancelled)setState("ready");
+   if(!cancelled){verified.current=true;setState("ready");}
   }).catch((error)=>{
    if(cancelled)return;
    const message=String(error?.message||"");
    if(message.includes("نشست")||!hasStoredSession()){
     clearSession();location.replace("/login");return;
    }
-   setState("error");
+   verified.current=false;setState("error");
   });
   return()=>{cancelled=true};
  },[pathname]);

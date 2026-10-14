@@ -27,9 +27,10 @@ export default function Sidebar(){
  const [perms,setPerms]=useState<Record<string,boolean>|null>(null);
  const [mobileOpen,setMobileOpen]=useState(false);
  const pathname=usePathname();
+ const publicRoute=isPublicRoute(pathname);
  const activeSection=sections.find(section=>section.hrefs.some(href=>href==="/"?pathname==="/":pathname===href||pathname.startsWith(`${href}/`)))?.id||"main";
  const [openSections,setOpenSections]=useState<Record<string,boolean>>(()=>({main:true,[activeSection]:true}));
- useEffect(()=>{const reload=()=>{if(!isPublicRoute(pathname)){setPerms(null);api<any>("/permissions/me/").then(x=>setPerms(x.permissions)).catch(()=>setPerms({}))}};reload();window.addEventListener("cafino-permissions-changed",reload);return()=>window.removeEventListener("cafino-permissions-changed",reload)},[pathname]);
+ useEffect(()=>{const reload=()=>{if(!publicRoute){setPerms(null);api<any>("/permissions/me/").then(x=>setPerms(x.permissions)).catch(()=>setPerms({}))}};reload();window.addEventListener("cafino-permissions-changed",reload);return()=>window.removeEventListener("cafino-permissions-changed",reload)},[publicRoute]);
  useEffect(()=>{setOpenSections(current=>({...current,[activeSection]:true}));setMobileOpen(current=>reduceMobileNavigation(current,"navigate"))},[activeSection,pathname]);
  useEffect(()=>{
   if(!mobileOpen)return;
@@ -38,7 +39,7 @@ export default function Sidebar(){
   return()=>{document.body.style.overflow=previous};
  },[mobileOpen]);
  useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setMobileOpen(false)};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close)},[]);
- if(isPublicRoute(pathname))return null;
+ if(publicRoute)return null;
  const visible=links.filter(x=>!x[3]||(perms!==null&&perms[x[3]]));
  const isActive=(href:string)=>href==="/"?pathname==="/":pathname===href||pathname.startsWith(`${href}/`);
  const renderNav=(prefixId:string,touch:boolean)=><nav className="sidebar-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pb-3" aria-label="منوی اصلی">{sections.map(section=>{const rows=visible.filter(([href])=>section.hrefs.includes(href));if(!rows.length)return null;const expanded=Boolean(openSections[section.id]);return <section key={section.id} aria-label={section.title}><button type="button" className={`flex w-full items-center justify-between rounded-lg px-2 ${touch?"min-h-11 py-2":"py-2"} text-right text-xs font-bold tracking-wide text-white/55 transition-colors hover:bg-white/5 hover:text-white`} onClick={()=>setOpenSections(current=>({...current,[section.id]:!current[section.id]}))} aria-expanded={expanded} aria-controls={`${prefixId}-${section.id}`}><span>{section.title}</span><ChevronDown size={16} className={`transition-transform ${expanded?"rotate-180":""}`} aria-hidden="true"/></button>{expanded&&<div id={`${prefixId}-${section.id}`} className="mt-1 space-y-1">{rows.map(([href,label,Icon])=>{const active=isActive(href);return <Link key={href} href={href} aria-current={active?"page":undefined} className={`flex ${touch?"min-h-12":"min-h-11"} items-center gap-3 rounded-xl border-r-4 px-3 py-2.5 transition-colors ${active?"border-[#e5ad62] bg-[#b9792d] font-bold text-white shadow-[0_6px_18px_rgba(185,121,45,.28)]":"border-transparent text-white/80 hover:bg-white/10 hover:text-white"}`}><Icon size={18} strokeWidth={active?2.5:2} className="flex-none"/><span className="min-w-0 break-words">{localizeLegacyText(label)}</span></Link>})}</div>}</section>})}</nav>;
