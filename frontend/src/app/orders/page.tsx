@@ -32,7 +32,28 @@ export default function Orders(){
  async function callWithOverride(path:string,permission:string,body:any){try{return await api(path,{method:"POST",body:JSON.stringify(body)})}catch(error:any){if(!String(error.message).includes("تأیید مدیر")&&!String(error.message).includes("نیازمند"))throw error;const token=await managerToken(permission);return api(path,{method:"POST",headers:{"X-Cafino-Override":token},body:JSON.stringify(body)})}}
  async function voidOrder(id:number){const reason=prompt("علت لغو سفارش؟","لغو توسط صندوق")||"لغو";if(!confirm("موجودی و همه پرداخت‌های سفارش برگشت داده شوند؟"))return;try{await callWithOverride(`/orders/${id}/cancel/`,"orders.void",{reason});setMsg("لغو سفارش ثبت شد.");void load()}catch(error:any){setMsg(error.message||"لغو سفارش انجام نشد.")}}
  async function refund(id:number,total:number){const amount=prompt("مبلغ برگشت وجه؟",String(total));if(!amount)return;const reason=prompt("علت برگشت وجه؟","مرجوعی یا اصلاح سفارش")||"برگشت وجه";try{await callWithOverride(`/orders/${id}/refund/`,"payments.refund",{amount:Number(amount),reason});setMsg("برگشت وجه ثبت شد.");void load()}catch(error:any){setMsg(error.message||"برگشت وجه انجام نشد.")}}
- async function printReceipt(id:number){try{const job=await api<any>(`/orders/${id}/receipt-job/`,{method:"POST",body:"{}"});const cafino=(window as any).cafino;const device=localStorage.getItem("cafino_receipt_printer")||"";if(cafino?.printReceipt){const result=await cafino.printReceipt(job.payload,device);if(result.ok){await api(`/print-jobs/${job.id}/mark_printed/`,{method:"POST",body:"{}"});setMsg("رسید چاپ و ثبت شد.")}else{await api(`/print-jobs/${job.id}/mark_failed/`,{method:"POST",body:JSON.stringify({error:result.error})});setMsg("چاپ رسید ناموفق بود؛ وضعیت چاپگر را بررسی کنید.")}return}const windowRef=window.open("","_blank","width=420,height=700");if(!windowRef)return;const payload=job.payload;windowRef.document.write(`<html dir="rtl"><body style="font-family:Tahoma"><h2>${payload.business}</h2><h3>سفارش #${payload.order_number}</h3>${payload.items.map((item:any)=>`<p>${item.quantity} × ${item.name} — ${Number(item.line_total).toLocaleString("fa-IR")}</p>`).join("")}<hr><b>${Number(payload.grand_total).toLocaleString("fa-IR")} ریال</b><script>print();<\/script></body></html>`);windowRef.document.close();await api(`/print-jobs/${job.id}/mark_printed/`,{method:"POST",body:"{}"})}catch(error:any){setMsg(error.message||"ساخت یا چاپ رسید انجام نشد.")}}
+ async function printReceipt(id:number){
+  // Open synchronously within the click to avoid popup blockers after the API request.
+  const popup=window.open("","_blank","width=420,height=700");
+  if(!popup){setMsg("مرورگر پنجره چاپ را مسدود کرده است. اجازه بازشدن پنجره را بدهید و دوباره تلاش کنید.");return}
+  popup.document.write('<html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>آماده‌سازی رسید</title></head><body style="font-family:Tahoma,sans-serif;padding:16px">در حال آماده‌سازی رسید…</body></html>');
+  popup.document.close();
+  try{
+   // A read-only receipt payload does not create a printer record or a print job.
+   const payload=await api<any>(`/orders/${id}/receipt/`);
+   if(popup.closed){setMsg("پنجره چاپ بسته شد.");return}
+   const escapeHtml=(value:unknown)=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]||char));
+   const money=(value:unknown)=>Number(value||0).toLocaleString("fa-IR");
+   const items=Array.isArray(payload.items)?payload.items:[];
+   const html=`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>رسید سفارش ${escapeHtml(payload.order_number)}</title><style>@page{size:80mm auto;margin:3mm}body{font-family:Tahoma,Arial,sans-serif;direction:rtl;max-width:80mm;margin:auto;padding:6px;font-size:12px;color:#111}h2,h3{text-align:center;margin:8px 0}p{margin:6px 0}hr{border:0;border-top:1px dashed #555}.row{display:flex;justify-content:space-between;gap:6px;margin:7px 0}.total{font-size:16px;font-weight:bold}@media print{button{display:none!important}}</style></head><body><h2>${escapeHtml(payload.business)}</h2><h3>سفارش شماره ${escapeHtml(payload.order_number)}</h3><hr>${items.map((item:any)=>`<div class="row"><span>${escapeHtml(item.quantity)} × ${escapeHtml(item.name)}</span><span>${money(item.line_total)}</span></div>`).join("")}<hr><div class="row total"><span>مبلغ کل</span><span>${money(payload.grand_total)} ریال</span></div><button type="button" onclick="window.print()" style="width:100%;padding:12px;margin-top:16px">چاپ رسید</button></body></html>`;
+   popup.document.open();popup.document.write(html);popup.document.close();
+   popup.focus();popup.print();
+   setMsg("رسید برای چاپ در مرورگر آماده شد. تأیید انجام چاپ با خود مرورگر است.");
+  }catch(error:any){
+   if(!popup.closed){popup.document.body.textContent="آماده‌سازی رسید ناموفق بود. پنجره را ببندید و دوباره تلاش کنید.";}
+   setMsg(error.message||"آماده‌سازی رسید انجام نشد.");
+  }
+ }
  const openSettlement=(order:Order)=>{setSettlingOrder(order);setTenders([{method:"POS",amount:order.outstanding_amount||String(order.grand_total),tendered_amount:order.outstanding_amount||String(order.grand_total),reference_number:"",gift_card_code:""}]);setMsg("")};
  const updateTender=(index:number,changes:Partial<Tender>)=>setTenders(current=>current.map((tender,tenderIndex)=>tenderIndex===index?{...tender,...changes}:tender));
  const addTender=()=>setTenders(current=>[...current,{method:"CASH",amount:"",tendered_amount:"",reference_number:"",gift_card_code:""}]);
