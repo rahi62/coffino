@@ -40,7 +40,7 @@ export default function Orders(){
   popup.document.close();
   try{
    // A read-only receipt payload does not create a printer record or a print job.
-   const payload=await api<any>(`/orders/${id}/receipt/`);
+   const payload=await api<any>(`/orders/${id}/receipt-payload/`);
    if(popup.closed){setMsg("پنجره چاپ بسته شد.");return}
    const escapeHtml=(value:unknown)=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]||char));
    const money=(value:unknown)=>Number(value||0).toLocaleString("fa-IR");
