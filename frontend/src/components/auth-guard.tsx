@@ -1,36 +1,53 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useState} from "react";
 import {usePathname} from "next/navigation";
 import {api} from "@/lib/api";
-import {clearSession,hasStoredSession} from "@/lib/auth";
+import {clearSession,getAccessToken,hasStoredSession} from "@/lib/auth";
 import {isPublicRoute} from "@/lib/public-routes.mjs";
 
 type AuthState="checking"|"ready"|"error";
+// A full browser reload still validates with /me/. Internal remounts share a
+// single verified access token so route changes do not flash the login screen.
+let verifiedToken:string|null=null;
+let verification:Promise<void>|null=null;
+let verifyingToken:string|null=null;
+function verifySession(token:string){
+ if(verifiedToken===token)return Promise.resolve();
+ if(verification&&verifyingToken===token)return verification;
+ verifyingToken=token;
+ const task=api("/me/").then(()=>{if(verifyingToken===token)verifiedToken=token;});
+ verification=task.finally(()=>{if(verification===task)verification=null;});
+ // Clear the promise on either resolution or rejection.
+ const current=verification;
+ void current.finally(()=>{if(verification===current){verification=null;verifyingToken=null;}}).catch(()=>{});
+ return current;
+}
 export default function AuthGuard({children}:{children:React.ReactNode}){
  const pathname=usePathname();
- const [state,setState]=useState<AuthState>("checking");
- const verified=useRef(false);
+ const publicRoute=isPublicRoute(pathname);
+ const token=getAccessToken();
+ const [state,setState]=useState<AuthState>(()=>publicRoute||Boolean(token&&verifiedToken===token)?"ready":"checking");
 
  useEffect(()=>{
-  if(isPublicRoute(pathname)){verified.current=false;setState("ready");return}
-  if(!hasStoredSession()){verified.current=false;location.replace("/login");return}
-  // Navigation within the authenticated app must not blank the entire layout.
-  if(verified.current)return;
-
+  if(publicRoute){setState("ready");return;}
+  if(!hasStoredSession()){verifiedToken=null;location.replace("/login");return;}
+  const currentToken=getAccessToken();
+  if(currentToken&&verifiedToken===currentToken){setState("ready");return;}
   let cancelled=false;
   setState("checking");
-  api("/me/").then(()=>{
-   if(!cancelled){verified.current=true;setState("ready");}
+  verifySession(currentToken||"refresh-only").then(()=>{
+   if(!cancelled)setState("ready");
   }).catch((error)=>{
    if(cancelled)return;
    const message=String(error?.message||"");
+   verifiedToken=null;
    if(message.includes("نشست")||!hasStoredSession()){
     clearSession();location.replace("/login");return;
    }
-   verified.current=false;setState("error");
+   setState("error");
   });
   return()=>{cancelled=true};
- },[pathname]);
+ },[publicRoute,token]);
 
  if(state==="ready")return <>{children}</>;
  if(state==="error")return <div className="p-10">
