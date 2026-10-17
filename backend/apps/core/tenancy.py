@@ -47,8 +47,16 @@ def can_access_branch(user,branch,*,cross_permission="branches.dashboard"):
     if not getattr(user,"branch_id",None):
         # A business owner may use their sole active branch without cross-branch privileges.
         # This does not grant access to another business or multiple-branch navigation.
-        if getattr(user,'role',None)=='OWNER' and branch.is_active and Branch.objects.filter(business=own_business,is_active=True).count()==1:
-            return True
+        if getattr(user,'role',None)=='OWNER' and branch.is_active:
+            # Preserve access to the original business branch when another
+            # branch is created but MULTI_BRANCH is disabled. This does not
+            # grant access to newly created sibling branches.
+            primary=Branch.objects.filter(business=own_business).order_by('created_at','pk').first()
+            if primary and branch.pk==primary.pk:
+                return True
+            active=Branch.objects.filter(business=own_business,is_active=True)
+            if active.count()==1 and active.filter(pk=branch.pk).exists():
+                return True
         return has_perm(user,cross_permission)
     return branch.id==user.branch_id or has_perm(user,cross_permission)
 
@@ -174,8 +182,13 @@ def resolve_branch_for_user(user,branch_id=None,*,cross_permission="branches.das
             if business and getattr(user,"role",None)=="OWNER":
                 active=Branch.objects.filter(business=business,is_active=True)
                 branch=active.first() if active.count()==1 else None
+                if branch is None and not has_perm(user,cross_permission):
+                    # Deterministic original branch; never choose arbitrary
+                    # list order or grant cross-branch access.
+                    primary=Branch.objects.filter(business=business).order_by('created_at','pk').first()
+                    branch=primary if primary and primary.is_active else None
                 if branch is None:
-                    raise PermissionDenied("شعبه را انتخاب کنید؛ انتخاب خودکار فقط برای کسب‌وکار تک‌شعبه‌ای امکان‌پذیر است.")
+                    raise PermissionDenied("شعبه را انتخاب کنید یا دسترسی شعبه اصلی را بررسی کنید.")
             else:
                 raise PermissionDenied("شناسه شعبه لازم است.")
     else:
