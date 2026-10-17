@@ -197,7 +197,8 @@ class BaseVS(viewsets.ModelViewSet):
 
     def _assert_write_permission(self):
         code=self.cafino_write_permission
-        if not code or not has_perm(self.request.user,code):
+        codes=code if isinstance(code,(tuple,list)) else (code,)
+        if not code or not any(has_perm(self.request.user,item) for item in codes):
             raise PermissionDenied('دسترسی نوشتن برای این منبع ندارید.')
 
     def _assert_write_scope(self,validated_data,instance=None):

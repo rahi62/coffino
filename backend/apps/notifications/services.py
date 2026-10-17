@@ -25,7 +25,14 @@ def _ready_copy(order):
     return title, f'سفارش شما در {order.branch.name} آمادهٔ تحویل است.'
 
 
+def _notifications_enabled(branch):
+    from apps.businesses.models import BusinessModule
+    return not BusinessModule.objects.filter(business=branch.business,key="NOTIFICATIONS",enabled=False).exists()
+
+
 def _configured_sms(branch):
+    if not _notifications_enabled(branch):
+        return False
     try:
         config=branch.sms_provider
     except SmsProviderConfig.DoesNotExist:
@@ -34,6 +41,8 @@ def _configured_sms(branch):
 
 
 def _configured_pager(branch):
+    if not _notifications_enabled(branch):
+        return False
     try:
         config=branch.pager_provider
     except PagerProviderConfig.DoesNotExist:

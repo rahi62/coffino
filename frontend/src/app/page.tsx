@@ -11,6 +11,9 @@ type Readiness={overall:{blocking:number};business:{checks:SetupCheck[]};branche
 const format=(value:number|null|undefined)=>Number(value??0).toLocaleString("fa-IR");
 
 export default function Dashboard(){
+  const [branches,setBranches]=useState<Array<{id:number;name:string;is_active?:boolean}>>([]);
+  const [selectedBranch,setSelectedBranch]=useState("");
+  const [branchError,setBranchError]=useState("");
   const [permissions,setPermissions]=useState<Record<string,boolean>|null>(null);
   const [data,setData]=useState<DashboardData|null>(null);
   const [readiness,setReadiness]=useState<Readiness|null>(null);
@@ -31,8 +34,29 @@ export default function Dashboard(){
       const perms=result.permissions;
       setPermissions(perms);
       const jobs:Promise<unknown>[]=[];
-      if(perms["orders.view"]||perms["reports.view"]){
-        jobs.push(api<DashboardData>("/dashboard/").then(x=>{setData(x);setUpdatedAt(new Date())}).catch(e=>{
+      let selected=selectedBranch;
+      let fallbackDashboard:DashboardData|null=null;
+      try{
+        const all=await api<Array<{id:number;name:string;is_active?:boolean}>>("/branches/");
+        const active=all.filter(x=>x.is_active!==false);
+        setBranches(active);
+        const saved=Number(localStorage.getItem("cafino_settings_branch")||0);
+        if(!active.some(x=>String(x.id)===selected))selected=active.find(x=>x.id===saved)?.id.toString()||(active.length===1?String(active[0].id):"");
+        if(!selected&&active.length>1&&(perms["orders.view"]||perms["reports.view"])){
+          try{
+            const candidate=await api<DashboardData & {branch:number}>("/dashboard/");
+            if(active.some(x=>x.id===candidate.branch)){
+              selected=String(candidate.branch);
+              fallbackDashboard=candidate;
+            }
+          }catch{/* Cross-branch users must select explicitly. */}
+        }
+        setSelectedBranch(selected);
+        setBranchError(!selected?(active.length?"شعبه را برای مشاهده آمار انتخاب کنید.":"شعبه فعالی وجود ندارد؛ ابتدا شعبه بسازید."):"");
+      }catch(e){selected="";setSelectedBranch("");setBranches([]);setBranchError("فهرست شعب در دسترس نیست.");}
+      if(!selected)setData(null);
+      if(selected&&(perms["orders.view"]||perms["reports.view"])){
+        jobs.push((fallbackDashboard?Promise.resolve(fallbackDashboard):api<DashboardData>(`/dashboard/?branch=${encodeURIComponent(selected)}`)).then(x=>{setData(x);setUpdatedAt(new Date())}).catch(e=>{
           setData(null);setDashboardError(e instanceof Error?e.message:"دریافت آمار ممکن نشد.");
         }));
       }else{setData(null);}
@@ -46,7 +70,7 @@ export default function Dashboard(){
       setPermissions(null);setData(null);setReadiness(null);
       setPermissionError(e instanceof Error?e.message:"بررسی سطح دسترسی انجام نشد.");
     }finally{setLoading(false);setRefreshing(false);}
-  },[]);
+  },[selectedBranch]);
   useEffect(()=>{void load()},[load]);
   useEffect(()=>{
     const refreshPermissions=()=>{void load()};
@@ -72,6 +96,7 @@ export default function Dashboard(){
         <div className="min-w-0"><p className="text-xs text-[#dfbd93]">مدیریت عملیات روزانه</p><h1 className="mt-1 text-2xl font-black sm:text-3xl">داشبورد کافینو</h1></div>
         <button type="button" disabled={refreshing} onClick={()=>void load()} className="min-h-11 self-start rounded-xl bg-white/10 px-4 text-sm text-white hover:bg-white/20 disabled:opacity-50 sm:self-auto"> {refreshing?"در حال به‌روزرسانی…":"به‌روزرسانی"} </button>
       </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2">{branches.length>0&&<label className="text-sm">شعبه فعال <select className="btn mr-2 text-[#211711]" value={selectedBranch} onChange={event=>{setSelectedBranch(event.target.value);localStorage.setItem("cafino_settings_branch",event.target.value)}}><option value="">انتخاب شعبه</option>{branches.map(branch=><option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}{branchError&&<span role="alert" className="text-sm text-amber-200">{branchError}</span>}</div>
       <div className="mt-4">
         {loading||!permissions?<span className="flex min-h-12 items-center rounded-2xl bg-white/10 px-4 text-sm" role="status">{permissionError?"امکان بررسی مجوز وجود ندارد.":"در حال بررسی دسترسی به ثبت سفارش…"}</span>
           :mayCreate?<Link href="/pos" className="flex min-h-14 w-full items-center justify-center rounded-2xl bg-[#e5ad62] px-5 text-center text-lg font-black text-[#211711] transition hover:bg-[#f5c77f] focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white sm:max-w-sm">+ ثبت سفارش جدید</Link>

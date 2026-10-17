@@ -22,8 +22,8 @@ class BusinessModuleVS(BaseVS): queryset=BusinessModule.objects.all(); serialize
 class CategoryVS(BaseVS):
     queryset=Category.objects.all()
     serializer_class=CategorySerializer
-    cafino_write_permission='inventory.manage'
-    cafino_read_permission=('orders.create', 'inventory.view', 'inventory.manage')
+    cafino_write_permission=('catalog.manage','inventory.manage')
+    cafino_read_permission=('orders.create', 'catalog.manage', 'inventory.view', 'inventory.manage')
     cafino_allow_destroy=True
 
     def destroy(self,request,*args,**kwargs):
@@ -35,8 +35,8 @@ class CategoryVS(BaseVS):
         return super().destroy(request,*args,**kwargs)
 
 class ProductVS(BaseVS):
-    cafino_read_permission=('orders.create', 'inventory.view', 'inventory.manage')
-    cafino_write_permission='inventory.manage'
+    cafino_read_permission=('orders.create', 'catalog.manage', 'inventory.view', 'inventory.manage')
+    cafino_write_permission=('catalog.manage','inventory.manage')
     cafino_allow_destroy=True
     queryset=Product.objects.select_related("category","preparation_station").all(); serializer_class=ProductSerializer
     filterset_fields=["branch","category","is_available"]; search_fields=["name","sku"]

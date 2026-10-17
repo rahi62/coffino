@@ -4,15 +4,16 @@ import Link from "next/link";
 import {ClipboardList,RefreshCw} from "lucide-react";
 import {useEffect,useState} from "react";
 import {api} from "@/lib/api";
+import {PAYMENT_METHODS,PAYMENT_METHOD_LABELS} from "@/lib/payment-methods.mjs";
 import {label} from "@/lib/i18n";
 
 type KitchenStatus={station_id:number;station_name:string;status:"NEW"|"PREPARING"|"READY"|"DONE"};
-type PaymentMethod="POS"|"CASH"|"CREDIT"|"WALLET"|"GIFT_CARD";
+type PaymentMethod=keyof typeof PAYMENT_METHOD_LABELS;
 type Tender={method:PaymentMethod;amount:string;tendered_amount:string;reference_number:string;gift_card_code:string};
 type Order={id:number;order_number:number;order_type:string;status:string;payment_status:string;tax_total:number|string;service_charge_total:number|string;grand_total:number|string;outstanding_amount:string;payments?:Array<{method:string;amount:number|string}>;kitchen_statuses?:KitchenStatus[]};
 const kitchenLabels:Record<KitchenStatus["status"],string>={NEW:"در صف آماده‌سازی",PREPARING:"در حال آماده‌سازی",READY:"آماده برای تحویل",DONE:"تحویل شد"};
 const kitchenClasses:Record<KitchenStatus["status"],string>={NEW:"bg-amber-50 text-amber-800",PREPARING:"bg-sky-50 text-sky-800",READY:"bg-emerald-50 text-emerald-800",DONE:"bg-[#eee6dc] text-[#766858]"};
-const paymentLabels:Record<PaymentMethod,string>={POS:"کارت‌خوان",CASH:"نقدی",CREDIT:"اعتباری",WALLET:"کیف پول",GIFT_CARD:"کارت هدیه"};
+const paymentLabels:Record<PaymentMethod,string>=PAYMENT_METHOD_LABELS;
 const normalizeAmount=(value:string)=>value
  .replace(/[۰-۹]/g,digit=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
  .replace(/[٠-٩]/g,digit=>String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))

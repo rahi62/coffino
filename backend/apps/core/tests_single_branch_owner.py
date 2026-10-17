@@ -31,10 +31,12 @@ class SingleBranchOwnerTests(TestCase):
             resolve_branch_for_user(self.owner, self.foreign_branch.id)
 
     def test_two_active_branches_require_explicit_authorization(self):
-        Branch.objects.create(business=self.business, name="Second", is_active=True)
-        self.assertFalse(can_access_branch(self.owner, self.branch))
+        second=Branch.objects.create(business=self.business, name="Second", is_active=True)
+        self.assertTrue(can_access_branch(self.owner, self.branch))
+        self.assertFalse(can_access_branch(self.owner, second))
+        self.assertEqual(resolve_branch_for_user(self.owner),self.branch)
         with self.assertRaises(PermissionDenied):
-            resolve_branch_for_user(self.owner)
+            resolve_branch_for_user(self.owner,second.id)
 
     def test_inactive_branch_does_not_qualify_as_sole_active_branch(self):
         self.branch.is_active = False

@@ -55,7 +55,7 @@ r.register("push-provider",PushProviderConfigVS,basename="push-provider")
 
 
 urlpatterns=[
-    path("health/",health),path("local/bootstrap/",local_bootstrap),path("me/",me),path("dashboard/",dashboard),path("checkout/",checkout),
+    path("health/",health),path("local/bootstrap/",local_bootstrap),path("me/",me),path("dashboard/",dashboard),path("checkout/",checkout),path("checkout-notification-options/",checkout_notification_options),
     path("purchases/create/",create_multi_purchase),path("reports/financial/",financial_report),
     path("approvals/request/",request_approval),path("daily-close/",daily_close),
     path("reports/sales/",sales_reports),path("reports/food-cost/",food_cost),path("reports/kpi/",kpi_report),
