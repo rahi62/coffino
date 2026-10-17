@@ -142,14 +142,15 @@ export default function Printing() {
     } finally { setBusy(false); }
   };
   const printTest = async () => {
-    const desktop = (window as any).cafino;
-    if (!desktop?.printHtml) {
-      setMessage("چاپ مستقیم فقط در برنامهٔ دسکتاپ کافینو فعال است؛ پیش‌نمایش را در همین صفحه بررسی کنید.");
-      return;
-    }
-    const html = `<html dir="rtl"><head><meta charset="utf-8"></head><body>${document.getElementById("thermal-preview")?.innerHTML || ""}</body></html>`;
-    const result = await desktop.printHtml(html, receipt);
-    setMessage(result?.ok ? "برگهٔ آزمایشی به چاپگر ارسال شد." : `چاپ آزمایشی انجام نشد: ${result?.error || "خطای نامشخص"}`);
+    const preview=document.getElementById("thermal-preview");
+    if (!preview) {setPreviewOpen(true);setMessage("ابتدا پیش‌نمایش رسید را باز کنید، سپس چاپ را انتخاب کنید.");return;}
+    const popup=window.open("","_blank","width=420,height=700");
+    if(!popup){setMessage("مرورگر پنجره چاپ را مسدود کرده است.");return;}
+    popup.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>چاپ آزمایشی</title><style>@page{size:80mm auto;margin:3mm}body{font-family:Tahoma,Arial,sans-serif;margin:auto;max-width:80mm;padding:6px;direction:rtl}button{margin-top:15px}@media print{button{display:none}}</style></head><body>${preview.innerHTML}<button onclick="window.print()">چاپ</button></body></html>`);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+    setMessage("پنجره چاپ مرورگر باز شد؛ چاپگر را در همان پنجره انتخاب کنید.");
   };
 
   if (permissionsLoading) return <div role="status" className="card p-5">در حال بررسی دسترسی چاپ…</div>;
@@ -169,7 +170,7 @@ export default function Printing() {
 
     <section className="grid gap-4 lg:grid-cols-2">
       <div className="card p-5">
-        <h2 className="font-black text-lg">انتخاب چاپگر محلی</h2><p className="mt-1 text-sm text-[#8d8178]">در برنامهٔ دسکتاپ، چاپ بدون نمایش پنجرهٔ مرورگر به چاپگر انتخاب‌شده ارسال می‌شود.</p>
+        <h2 className="font-black text-lg">انتخاب چاپگر محلی</h2><p className="mt-1 text-sm text-[#8d8178]">چاپ معمولی از طریق پنجره چاپ مرورگر انجام می‌شود. شناسایی چاپگرهای ویندوز فقط در برنامه دسکتاپ امکان‌پذیر است.</p>
         {osPrinters.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-bold">رسید مشتری<select className="btn mt-1 w-full" value={receipt} onChange={(event) => setReceipt(event.target.value)}><option value="">چاپگر پیش‌فرض سیستم</option>{osPrinters.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select></label>
           <label className="text-sm font-bold">تیکت آشپزخانه<select className="btn mt-1 w-full" value={kitchen} onChange={(event) => setKitchen(event.target.value)}><option value="">چاپگر پیش‌فرض سیستم</option>{osPrinters.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}</option>)}</select></label>
