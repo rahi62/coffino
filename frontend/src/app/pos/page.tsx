@@ -77,7 +77,7 @@ export default function POS(){
 
   async function calculatePreview(){
     const items=itemsPayload();if(!items.length)throw new Error("حداقل یک آیتم انتخاب کن");
-    const br=branches[0];if(!br)throw new Error("شعبه‌ای تعریف نشده است");
+    const br=branches.find(x=>String(x.id)===selectedBranchId);if(!br)throw new Error("ابتدا شعبه معتبر را انتخاب کنید.");
     const token=await overrideToken(br.id);
     const manual=(Number(manualAmount||0)>0||Number(manualPercent||0)>0)?{amount:Number(manualAmount||0),percent:Number(manualPercent||0)}:null;
     const d=await api<any>("/checkout/preview/",{method:"POST",headers:token?{"X-Cafino-Override":token}:{},body:JSON.stringify({branch:br.id,items,order_type:orderType,discount_code:discountCode||null,manual_discount:manual,delivery:orderType==="DELIVERY"?{zone_code:deliveryZone,address:deliveryAddress,recipient_name:customerName,phone:customerPhone}:null,zone_code:orderType==="DELIVERY"?deliveryZone:null})});
