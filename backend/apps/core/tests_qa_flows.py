@@ -24,6 +24,10 @@ class QaCheckoutMenuTests(TestCase):
             self.assertTrue(has_perm(user,"catalog.manage"))
             self.assertFalse(has_perm(user,"inventory.manage"))
             c=self.client_as(user)
+            permissions=c.get("/api/v1/permissions/me/")
+            self.assertEqual(permissions.status_code,200)
+            self.assertTrue(permissions.json()["permissions"]["catalog.manage"])
+            self.assertFalse(permissions.json()["permissions"]["inventory.manage"])
             category=c.post("/api/v1/categories/",{"branch":self.branch.pk,"name":f"Coffee-{user.role}"},format="json")
             self.assertEqual(category.status_code,201,category.content)
             product=c.post("/api/v1/products/",{"branch":self.branch.pk,"name":"Latte","price":1000,"category":category.json()["id"]},format="json")
@@ -37,6 +41,7 @@ class QaCheckoutMenuTests(TestCase):
         self.cashier.permission_overrides={"catalog.manage":False}
         self.cashier.save(update_fields=["permission_overrides"])
         c=self.client_as(self.cashier)
+        self.assertFalse(c.get("/api/v1/permissions/me/").json()["permissions"]["catalog.manage"])
         self.assertEqual(c.post("/api/v1/categories/",{"branch":self.branch.pk,"name":"No"},format="json").status_code,403)
         c=self.client_as(self.owner)
         self.assertIn(c.post("/api/v1/categories/",{"branch":self.foreign.pk,"name":"Foreign"},format="json").status_code,(400,403))
