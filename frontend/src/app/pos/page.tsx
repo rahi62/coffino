@@ -3,11 +3,11 @@ import {useEffect,useMemo,useRef,useState} from "react";
 import FormDialog from "@/components/form-dialog";
 import {api} from "@/lib/api";
 
-type Product={id:number;name:string;price:string;category:number|null;category_name?:string};
-type Category={id:number;name:string};
+type Product={branch:number;id:number;name:string;price:string;category:number|null;category_name?:string};
+type Category={branch:number;id:number;name:string};
 type Tender={method:string;amount:string;tendered_amount?:string;payer_label?:string;gift_card_code?:string;bank_account?:string};
-type Table={id:number;number:string;status:"FREE"|"OCCUPIED"|"RESERVED";capacity:number};
-type Pager={id:number;number:string;status:"AVAILABLE"|"ASSIGNED"|"DISABLED"};
+type Table={hall?:number;branch?:number;id:number;number:string;status:"FREE"|"OCCUPIED"|"RESERVED";capacity:number};
+type Pager={branch:number;id:number;number:string;status:"AVAILABLE"|"ASSIGNED"|"DISABLED"};
 type BankAccount={id:number;branch:number;display_name:string;is_active:boolean};
 const normalizeCustomerSearch=(value:string)=>value.trim().toLocaleLowerCase("fa").replace(/[۰-۹]/g,digit=>"۰۱۲۳۴۵۶۷۸۹".indexOf(digit).toString()).replace(/[٠-٩]/g,digit=>"٠١٢٣٤٥٦٧٨٩".indexOf(digit).toString());
 
@@ -28,34 +28,39 @@ export default function POS(){
 
   function load(){
     setInitialLoading(true);setInitialError("");
-    // Core POS data remains required. Bank accounts are optional metadata and
-    // /bank-accounts/ is not currently registered in the backend API router.
-    Promise.all([
-      api<Product[]>("/products/"),api<Category[]>("/categories/"),
-      api<Table[]>("/tables/"),api<any[]>("/branches/"),
-      api<any[]>("/delivery-zones/"),api<Pager[]>("/pagers/"),
-      api<any[]>("/customers/")
-    ]).then(([p,c,t,b,z,pg,cu])=>{
-      setProducts(p);setCategories(c);setTables(t);setBranches(b);
-      const stored=Number(localStorage.getItem("cafino_settings_branch")||0);
-      const chosen=b.find(x=>x.id===stored&&x.is_active!==false)||(b.filter(x=>x.is_active!==false).length===1?b.find(x=>x.is_active!==false):null);
-      setSelectedBranchId(chosen?String(chosen.id):"");
-      setZones(z);setPagers(pg);setCustomers(cu.filter(customer=>!customer.is_walk_in));
-      setBankAccounts([]);
-      if(z[0]&&!deliveryZone)setDeliveryZone(z[0].code);
-    }).catch(e=>{
-      setInitialError(e instanceof Error?e.message:"دریافت اطلاعات فروش ناموفق بود.");
-    }).finally(()=>setInitialLoading(false));
+    // Inventory, dining, delivery, paging and customers are optional modules.
+    Promise.all([api<Product[]>("/products/"),api<Category[]>("/categories/"),api<any[]>("/branches/")])
+      .then(async([p,c,branchRows])=>{
+        setProducts(p);setCategories(c);setBranches(branchRows);
+        const stored=Number(localStorage.getItem("cafino_settings_branch")||0);
+        const active=branchRows.filter(x=>x.is_active!==false);
+        const chosen=active.find(x=>x.id===stored)||(active.length===1?active[0]:null);
+        setSelectedBranchId(chosen?String(chosen.id):"");
+        const optional=await Promise.allSettled([
+          api<Table[]>("/tables/"),api<any[]>("/delivery-zones/"),
+          api<Pager[]>("/pagers/"),api<any[]>("/customers/"),
+        ]);
+        if(optional[0].status==="fulfilled")setTables(optional[0].value);else setTables([]);
+        if(optional[1].status==="fulfilled"){
+          setZones(optional[1].value);
+          if(optional[1].value[0]&&!deliveryZone)setDeliveryZone(optional[1].value[0].code);
+        }else setZones([]);
+        setPagers(optional[2].status==="fulfilled"?optional[2].value:[]);
+        setCustomers(optional[3].status==="fulfilled"?optional[3].value.filter(customer=>!customer.is_walk_in):[]);
+        setBankAccounts([]);
+      }).catch(e=>setInitialError(e instanceof Error?e.message:"دریافت اطلاعات اصلی فروش ناموفق بود."))
+      .finally(()=>setInitialLoading(false));
   }
   useEffect(load,[]);
   useEffect(()=>{if(!selectedBranchId){setNotificationCaps({sms:false,pager:false});return;}api<{sms:boolean;pager:boolean}>(`/checkout-notification-options/?branch=${selectedBranchId}`).then(setNotificationCaps).catch(()=>setNotificationCaps({sms:false,pager:false}))},[selectedBranchId]);
-  useEffect(()=>{if(readyNotificationMethod==="SMS"&&!notificationCaps.sms)setReadyNotificationMethod("NONE");if(readyNotificationMethod==="PAGER"&&!notificationCaps.pager || !pagers.some(p=>p.status==="AVAILABLE"))setReadyNotificationMethod("NONE")},[readyNotificationMethod,notificationCaps.sms,notificationCaps.pager,pagers]);
-  const shown=category?products.filter(x=>x.category===category):products;
+  useEffect(()=>{if(readyNotificationMethod==="SMS"&&!notificationCaps.sms)setReadyNotificationMethod("NONE");if(readyNotificationMethod==="PAGER"&&(!notificationCaps.pager || !pagers.some(p=>p.branch===Number(selectedBranchId)&&p.status==="AVAILABLE")))setReadyNotificationMethod("NONE")},[readyNotificationMethod,notificationCaps.sms,notificationCaps.pager,pagers,selectedBranchId]);
+  const branchProducts=products.filter(x=>x.branch===Number(selectedBranchId));
+  const shown=category?branchProducts.filter(x=>x.category===category):branchProducts;
   const cartCount=Object.values(cart).reduce((a,b)=>a+Number(b||0),0);
-  const subtotal=useMemo(()=>products.reduce((sum,p)=>sum+(cart[p.id]||0)*Number(p.price),0),[cart,products]);
+  const subtotal=useMemo(()=>branchProducts.reduce((sum,p)=>sum+(cart[p.id]||0)*Number(p.price),0),[cart,branchProducts]);
   const manualPreview=useMemo(()=>Math.min(subtotal,Number(manualAmount||0)||subtotal*(Number(manualPercent||0)/100)),[subtotal,manualAmount,manualPercent]);
   const tenderSum=useMemo(()=>tenders.reduce((s,x)=>s+Number(x.amount||0),0),[tenders]);
-  const branchBankAccounts=useMemo(()=>bankAccounts.filter(account=>account.branch===branches[0]?.id),[bankAccounts,branches]);
+  const branchBankAccounts=useMemo(()=>bankAccounts.filter(account=>account.branch===Number(selectedBranchId)),[bankAccounts,selectedBranchId]);
   const matchingCustomers=useMemo(()=>{const query=normalizeCustomerSearch(customerQuery);if(!query)return [];return customers.filter(customer=>normalizeCustomerSearch(String(customer.name||"")).includes(query)||normalizeCustomerSearch(String(customer.phone||"")).includes(query)).slice(0,6)},[customers,customerQuery]);
 
   function invalidate(){setPreview(null);checkoutKey.current=""}
@@ -128,7 +133,7 @@ export default function POS(){
   if(initialLoading)return <div role="status" className="card p-5">در حال دریافت محصولات و اطلاعات فروش…</div>;
   if(initialError)return <section role="alert" className="card border-red-200 p-5"><h1 className="text-xl font-black">فروش در دسترس نیست</h1><p className="mt-2 text-sm text-red-800">{initialError}</p><button type="button" className="btn mt-4 min-h-11" onClick={load}>تلاش دوباره</button></section>;
   return <div className="pb-24 md:flex md:h-[calc(100dvh-2.5rem)] md:flex-col md:pb-0 xl:h-[calc(100dvh-3rem)]">
-    <label className="mb-3 block text-sm font-bold">شعبه فروش <select className="btn mr-2" value={selectedBranchId} onChange={e=>{setSelectedBranchId(e.target.value);localStorage.setItem("cafino_settings_branch",e.target.value);setCart({});setTable("");setPagerId("");}}><option value="">انتخاب شعبه</option>{branches.filter(x=>x.is_active!==false).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+    <label className="mb-3 block text-sm font-bold">شعبه فروش <select className="btn mr-2" value={selectedBranchId} onChange={e=>{setSelectedBranchId(e.target.value);localStorage.setItem("cafino_settings_branch",e.target.value);setCart({});setCategory(null);setTable("");setPagerId("");invalidate();}}><option value="">انتخاب شعبه</option>{branches.filter(x=>x.is_active!==false).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <div className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-3 md:mb-3">
       <div><h1 className="text-2xl font-black md:text-3xl">فروش جدید</h1><p className="hidden text-[#8d8178] sm:block">پیش‌نمایش قطعی سامانه ← مالیات و سرویس ← پرداخت ترکیبی ← آماده‌سازی</p></div>
       <div className="flex flex-wrap gap-2"><select className="btn" value={orderType} onChange={e=>{setOrderType(e.target.value);setTable("");invalidate()}}><option value="TAKEAWAY">بیرون‌بر</option><option value="DINE_IN">داخل سالن</option><option value="PICKUP">تحویل حضوری</option><option value="DELIVERY">ارسال</option></select>
@@ -136,12 +141,12 @@ export default function POS(){
     </div>
     {message&&<div className="card mb-3 shrink-0 p-3">{message}</div>}
     <div className="grid grid-cols-1 gap-3 md:min-h-0 md:flex-1 md:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] md:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[140px_minmax(0,1fr)_minmax(340px,420px)] xl:grid-rows-[minmax(0,1fr)] xl:gap-4">
-      <div className="card flex gap-2 overflow-x-auto p-2 md:col-span-2 xl:col-span-1 xl:block xl:min-h-0 xl:space-y-2 xl:overflow-y-auto xl:overflow-x-visible xl:p-3" role="tablist" aria-label="دسته‌بندی منو"><button role="tab" aria-selected={category===null} className={`btn shrink-0 xl:w-full ${category===null?"btn-primary":""}`} onClick={()=>setCategory(null)}>همه</button>{categories.map(c=><button role="tab" aria-selected={category===c.id} className={`btn shrink-0 xl:w-full ${category===c.id?"btn-primary":""}`} key={c.id} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
+      <div className="card flex gap-2 overflow-x-auto p-2 md:col-span-2 xl:col-span-1 xl:block xl:min-h-0 xl:space-y-2 xl:overflow-y-auto xl:overflow-x-visible xl:p-3" role="tablist" aria-label="دسته‌بندی منو"><button role="tab" aria-selected={category===null} className={`btn shrink-0 xl:w-full ${category===null?"btn-primary":""}`} onClick={()=>setCategory(null)}>همه</button>{categories.filter(c=>c.branch===Number(selectedBranchId)).map(c=><button role="tab" aria-selected={category===c.id} className={`btn shrink-0 xl:w-full ${category===c.id?"btn-primary":""}`} key={c.id} onClick={()=>setCategory(c.id)}>{c.name}</button>)}</div>
       <div className="grid grid-cols-2 content-start gap-3 md:min-h-0 md:overflow-y-auto md:pb-1 min-[900px]:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">{shown.map(p=><button key={p.id} className="card relative min-h-[104px] p-3 text-right transition active:scale-[.98] md:p-4 md:hover:-translate-y-1" onClick={()=>inc(p.id)}>{cart[p.id]>0&&<span className="absolute left-2 top-2 grid min-w-7 place-items-center rounded-full bg-[#b9792d] px-1.5 text-sm font-black text-white">{Number(cart[p.id]).toLocaleString("fa-IR")}</span>}<div className="font-bold text-base md:text-lg">{p.name}</div><div className="mt-1 text-xs text-[#8d8178]">{p.category_name||"بدون دسته"}</div><div className="mt-3 font-bold text-[#b9792d] md:mt-4">{Number(p.price).toLocaleString("fa-IR")} ریال</div></button>)}</div>
       {cartOpen&&<button type="button" aria-label="بستن سبد" className="fixed inset-0 z-30 h-full w-full cursor-default bg-black/45 md:hidden" onClick={()=>setCartOpen(false)}/>}
       <div className={`card p-4 ${cartOpen?"fixed inset-x-0 bottom-0 z-40 max-h-[90vh] overflow-y-auto !rounded-b-none !rounded-t-3xl shadow-2xl":"hidden"} md:static md:z-auto md:block md:max-h-none md:min-h-0 md:overflow-y-auto md:!rounded-[18px] md:shadow-none`} role={cartOpen?"dialog":undefined} aria-label="سبد سفارش">
-        <div className="mb-3 flex items-start justify-between gap-2"><div><h2 className="text-xl font-black">سفارش جاری</h2><p className="mt-1 text-xs text-[#8d8178]">{customerName||customerPhone?`${customerName||"مشتری"}${customerPhone?` · ${customerPhone}`:""}`:"مشتری و اطلاعات تحویل هنوز ثبت نشده است."}</p></div><div className="flex gap-2"><button type="button" className="btn text-sm" onClick={()=>setCustomerDialog(true)}>مشتری و تحویل</button><button type="button" aria-label="بستن سبد" className="btn text-sm md:hidden" onClick={()=>setCartOpen(false)}>✕</button></div></div>{orderType==="TAKEAWAY"&&<div className="mb-3 rounded-xl bg-[#eee6dc] p-3"><div className="mb-2 text-sm font-bold">اطلاع‌رسانی آماده‌شدن سفارش</div><div className="grid gap-2 sm:grid-cols-2"><select className="btn w-full" value={readyNotificationMethod} onChange={e=>{setReadyNotificationMethod(e.target.value);setPagerId("")}}><option value="SMS" disabled={!notificationCaps.sms}>پیامک به مشتری</option><option value="PAGER" disabled={!notificationCaps.pager || !pagers.some(p=>p.status==="AVAILABLE")}>فراخوانی پیجر</option><option value="NONE">بدون اعلان</option></select>{readyNotificationMethod==="PAGER"&&<select className="btn w-full" value={pagerId} onChange={e=>setPagerId(e.target.value)}><option value="">انتخاب پیجر آزاد…</option>{pagers.filter(pager=>pager.status==="AVAILABLE").map(pager=><option key={pager.id} value={pager.id}>پیجر {pager.number}</option>)}</select>}</div><p className="mt-2 text-xs text-[#8d8178]">پس از آماده‌شدن همهٔ آیتم‌ها، پیامک یا فرمان فراخوانی پیجر در پس‌زمینه ارسال و وضعیت آن ثبت می‌شود.</p></div>}
-        <div className="min-h-44 space-y-2 md:max-h-[28vh] md:overflow-auto">{products.filter(p=>cart[p.id]).map(p=><div key={p.id} className="flex justify-between items-center border-b pb-2"><div><b>{p.name}</b><div className="text-xs text-[#8d8178]">{(Number(p.price)*(cart[p.id]||0)).toLocaleString("fa-IR")}</div></div><div className="flex items-center gap-2"><button className="btn" onClick={()=>dec(p.id)}>−</button><b>{cart[p.id]}</b><button className="btn" onClick={()=>inc(p.id)}>+</button></div></div>)}</div>
+        <div className="mb-3 flex items-start justify-between gap-2"><div><h2 className="text-xl font-black">سفارش جاری</h2><p className="mt-1 text-xs text-[#8d8178]">{customerName||customerPhone?`${customerName||"مشتری"}${customerPhone?` · ${customerPhone}`:""}`:"مشتری و اطلاعات تحویل هنوز ثبت نشده است."}</p></div><div className="flex gap-2"><button type="button" className="btn text-sm" onClick={()=>setCustomerDialog(true)}>مشتری و تحویل</button><button type="button" aria-label="بستن سبد" className="btn text-sm md:hidden" onClick={()=>setCartOpen(false)}>✕</button></div></div>{orderType==="TAKEAWAY"&&<div className="mb-3 rounded-xl bg-[#eee6dc] p-3"><div className="mb-2 text-sm font-bold">اطلاع‌رسانی آماده‌شدن سفارش</div><div className="grid gap-2 sm:grid-cols-2"><select className="btn w-full" value={readyNotificationMethod} onChange={e=>{setReadyNotificationMethod(e.target.value);setPagerId("")}}><option value="SMS" disabled={!notificationCaps.sms}>پیامک به مشتری</option><option value="PAGER" disabled={!notificationCaps.pager || !pagers.some(p=>p.status==="AVAILABLE")}>فراخوانی پیجر</option><option value="NONE">بدون اعلان</option></select>{readyNotificationMethod==="PAGER"&&<select className="btn w-full" value={pagerId} onChange={e=>setPagerId(e.target.value)}><option value="">انتخاب پیجر آزاد…</option>{pagers.filter(pager=>pager.branch===Number(selectedBranchId)&&pager.status==="AVAILABLE").map(pager=><option key={pager.id} value={pager.id}>پیجر {pager.number}</option>)}</select>}</div><p className="mt-2 text-xs text-[#8d8178]">پس از آماده‌شدن همهٔ آیتم‌ها، پیامک یا فرمان فراخوانی پیجر در پس‌زمینه ارسال و وضعیت آن ثبت می‌شود.</p></div>}
+        <div className="min-h-44 space-y-2 md:max-h-[28vh] md:overflow-auto">{branchProducts.filter(p=>cart[p.id]).map(p=><div key={p.id} className="flex justify-between items-center border-b pb-2"><div><b>{p.name}</b><div className="text-xs text-[#8d8178]">{(Number(p.price)*(cart[p.id]||0)).toLocaleString("fa-IR")}</div></div><div className="flex items-center gap-2"><button className="btn" onClick={()=>dec(p.id)}>−</button><b>{cart[p.id]}</b><button className="btn" onClick={()=>inc(p.id)}>+</button></div></div>)}</div>
         <div className="border-t pt-3 mt-3 space-y-2"><input className="border rounded-xl p-2 w-full" placeholder="کد تخفیف" value={discountCode} onChange={e=>{setDiscountCode(e.target.value);invalidate()}}/><div className="grid grid-cols-2 gap-2"><input className="border rounded-xl p-2" placeholder="تخفیف %" value={manualPercent} onChange={e=>{setManualPercent(e.target.value);invalidate()}}/><input className="border rounded-xl p-2" placeholder="تخفیف مبلغ" value={manualAmount} onChange={e=>{setManualAmount(e.target.value);invalidate()}}/></div>{(manualPreview>0||discountCode)&&<input type="password" inputMode="numeric" className="border rounded-xl p-2 w-full" placeholder="رمز مدیر در صورت نیاز" value={managerPin} onChange={e=>setManagerPin(e.target.value)}/>}</div>
         <button className="btn w-full mt-3" onClick={()=>calculatePreview().catch(e=>setMessage(e.message))}>محاسبه مبلغ نهایی</button>
         <div className="mt-3 text-sm space-y-1"><div className="flex justify-between"><span>جمع منو</span><b>{subtotal.toLocaleString("fa-IR")}</b></div>{preview&&<><div className="flex justify-between"><span>تخفیف</span><b>-{Number(preview.discount_total).toLocaleString("fa-IR")}</b></div><div className="flex justify-between"><span>حق سرویس</span><b>{Number(preview.service_charge_total).toLocaleString("fa-IR")}</b></div><div className="flex justify-between"><span>مالیات</span><b>{Number(preview.tax_total).toLocaleString("fa-IR")}</b></div><div className="flex justify-between text-xl font-black"><span>نهایی</span><span>{Number(preview.grand_total).toLocaleString("fa-IR")} ریال</span></div></>}</div>
