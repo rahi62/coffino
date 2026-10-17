@@ -22,8 +22,8 @@ class BusinessModuleVS(BaseVS): queryset=BusinessModule.objects.all(); serialize
 class CategoryVS(BaseVS):
     queryset=Category.objects.all()
     serializer_class=CategorySerializer
-    cafino_write_permission='inventory.manage'
-    cafino_read_permission=('orders.create', 'inventory.view', 'inventory.manage')
+    cafino_write_permission='catalog.manage'
+    cafino_read_permission=('orders.create', 'catalog.manage', 'inventory.view', 'inventory.manage')
     cafino_allow_destroy=True
 
     def destroy(self,request,*args,**kwargs):
