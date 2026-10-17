@@ -24,7 +24,7 @@ class QaCheckoutMenuTests(TestCase):
             self.assertTrue(has_perm(user,"catalog.manage"))
             self.assertFalse(has_perm(user,"inventory.manage"))
             c=self.client_as(user)
-            category=c.post("/api/v1/categories/",{"branch":self.branch.pk,"name":"Coffee"},format="json")
+            category=c.post("/api/v1/categories/",{"branch":self.branch.pk,"name":f"Coffee-{user.role}"},format="json")
             self.assertEqual(category.status_code,201,category.content)
             product=c.post("/api/v1/products/",{"branch":self.branch.pk,"name":"Latte","price":1000,"category":category.json()["id"]},format="json")
             self.assertEqual(product.status_code,201,product.content)
@@ -46,6 +46,19 @@ class QaCheckoutMenuTests(TestCase):
         self.assertEqual(c.post("/api/v1/checkout/",payload,format="json").status_code,400)
         payload["ready_notification_method"]="PAGER"
         self.assertEqual(c.post("/api/v1/checkout/",payload,format="json").status_code,400)
+    def test_checkout_pos_method_and_retry_are_idempotent_without_delivery(self):
+        c=self.client_as(self.owner)
+        product=Product.objects.create(branch=self.branch,name="Checkout latte",price=200)
+        payload={"branch":self.branch.pk,"items":[{"product":product.pk,"quantity":1}],"order_type":"TAKEAWAY",
+                 "payments":[{"method":"POS","amount":"200"}],"ready_notification_method":"NONE"}
+        first=c.post("/api/v1/checkout/",payload,format="json",HTTP_IDEMPOTENCY_KEY="qa-pos-123")
+        self.assertEqual(first.status_code,201,first.content)
+        second=c.post("/api/v1/checkout/",payload,format="json",HTTP_IDEMPOTENCY_KEY="qa-pos-123")
+        self.assertEqual(second.status_code,201,second.content)
+        self.assertEqual(first.json()["id"],second.json()["id"])
+        self.assertEqual(self.branch.orders.filter(pk=first.json()["id"]).count(),1)
+        from apps.takeaway.models import TakeawayProfile
+        self.assertEqual(TakeawayProfile.objects.get(order_id=first.json()["id"]).ready_notification_method,"NONE")
     def test_branchless_owner_must_select_authorized_branch_after_second_branch(self):
         owner=User.objects.create_user(username="qa-unassigned",password="test",business=self.business,role="OWNER")
         second=Branch.objects.create(business=self.business,name="Second")
