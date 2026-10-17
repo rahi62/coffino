@@ -9,7 +9,7 @@ import {label} from "@/lib/i18n";
 const money=(value:unknown)=>Number(value||0).toLocaleString("fa-IR");
 
 export default function SplitBill(){
- const [orders,setOrders]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[guests,setGuests]=useState("2"),[allocation,setAllocation]=useState<Record<string,string>>({}),[splits,setSplits]=useState<any[]>([]),[message,setMessage]=useState(""),[settling,setSettling]=useState<any>(null),[method,setMethod]=useState(PAYMENT_METHODS.POS),[giftCardCode,setGiftCardCode]=useState(""),[busy,setBusy]=useState(false);
+ const [orders,setOrders]=useState<any[]>([]),[selected,setSelected]=useState<any>(null),[guests,setGuests]=useState("2"),[allocation,setAllocation]=useState<Record<string,string>>({}),[splits,setSplits]=useState<any[]>([]),[message,setMessage]=useState(""),[settling,setSettling]=useState<any>(null),[method,setMethod]=useState<string>(PAYMENT_METHODS.POS),[giftCardCode,setGiftCardCode]=useState(""),[busy,setBusy]=useState(false);
  const load=()=>api<any[]>("/orders/").then(items=>setOrders(items.filter(item=>["UNPAID","PARTIALLY_PAID"].includes(item.payment_status))));
  useEffect(()=>{void load().catch(error=>setMessage(error.message||"دریافت سفارش‌های تسویه‌نشده انجام نشد."))},[]);
  const count=Math.max(2,Math.min(10,Number(guests||2)));
