@@ -16,6 +16,25 @@ def me(request):
         "is_platform_admin":bool(request.user.is_superuser)
     })
 
+def _ready_notification_capabilities(branch):
+    from apps.notifications.models import PagerProviderConfig, SmsProviderConfig
+    enabled=BusinessModule.objects.filter(business=branch.business,key='NOTIFICATIONS',enabled=True).exists()
+    disabled=BusinessModule.objects.filter(business=branch.business,key='NOTIFICATIONS',enabled=False).exists()
+    module_allowed=enabled or not disabled
+    sms=module_allowed and SmsProviderConfig.objects.filter(branch=branch,is_active=True).exclude(endpoint_url='').exists()
+    pager=module_allowed and PagerProviderConfig.objects.filter(branch=branch,is_active=True).exclude(endpoint_url='').exists()
+    return {'sms':sms,'pager':pager and PagerDevice.objects.filter(branch=branch,status='AVAILABLE').exists()}
+
+@api_view(["GET"])
+def checkout_notification_options(request):
+    if not has_perm(request.user,'orders.create'):
+        return Response({'detail':'دسترسی ندارید'},status=403)
+    try:
+        branch=resolve_branch_for_user(request.user,request.query_params.get('branch'))
+    except Exception:
+        return Response({'detail':'شعبه معتبر یا مجاز نیست'},status=403)
+    return Response(_ready_notification_capabilities(branch))
+
 @api_view(["POST"])
 @transaction.atomic
 def checkout(request):
@@ -26,6 +45,20 @@ def checkout(request):
         branch=resolve_branch_for_user(request.user,request.data.get("branch"))
     except Exception:
         return Response({"detail":"شعبه سفارش معتبر یا مجاز نیست"},status=403)
+
+    method=request.data.get("ready_notification_method","NONE") if request.data.get("order_type","TAKEAWAY")=="TAKEAWAY" else "NONE"
+    if method not in ("NONE","SMS","PAGER"):
+        return Response({'detail':'روش اعلان معتبر نیست'},status=400)
+    notification_caps=_ready_notification_capabilities(branch)
+    if method=="SMS" and (not notification_caps['sms'] or not request.data.get("customer_phone")):
+        return Response({'detail':'پیامک این شعبه فعال نیست یا شماره مشتری وارد نشده است'},status=400)
+    pager=None
+    if method=="PAGER":
+        if not notification_caps['pager']:
+            return Response({'detail':'پیجر برای این شعبه فعال و آماده نیست'},status=400)
+        pager=PagerDevice.objects.filter(pk=request.data.get('pager_id'),branch=branch,status='AVAILABLE').first()
+        if pager is None:
+            return Response({'detail':'پیجر آزاد و معتبر انتخاب کنید'},status=400)
 
     rows=[]
     for raw in request.data.get("items",[]):
@@ -121,7 +154,9 @@ def checkout(request):
             defaults={
                 "pickup_number":str(order.order_number),
                 "customer_name":request.data.get("customer_name",""),
-                "customer_phone":request.data.get("customer_phone","")
+                "customer_phone":request.data.get("customer_phone",""),
+                "ready_notification_method":method,
+                "pager":pager,
             }
         )
     if order.order_type=="DELIVERY" and delivery_address:
