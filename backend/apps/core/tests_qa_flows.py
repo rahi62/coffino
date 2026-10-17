@@ -30,7 +30,7 @@ class QaCheckoutMenuTests(TestCase):
             self.assertEqual(product.status_code,201,product.content)
             self.assertEqual(c.get("/api/v1/categories/").status_code,200)
             self.assertIn(category.json()["id"],[row["id"] for row in c.get("/api/v1/categories/").json()])
-            self.assertEqual(c.patch(f'/api/v1/categories/{category.json()["id"]}/',{"name":"Updated"},format="json").status_code,200)
+            self.assertEqual(c.patch(f'/api/v1/categories/{category.json()["id"]}/',{"name":f"Updated-{user.role}"},format="json").status_code,200)
     def test_override_and_tenant_cannot_write(self):
         self.assertFalse(has_perm(self.cashier,"catalog.manage"))
         self.assertEqual(self.client_as(self.cashier).post("/api/v1/categories/",{"branch":self.branch.pk,"name":"Blocked"},format="json").status_code,403)
