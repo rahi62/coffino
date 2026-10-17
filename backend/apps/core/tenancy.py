@@ -193,4 +193,6 @@ def resolve_branch_for_user(user,branch_id=None,*,cross_permission="branches.das
                 raise PermissionDenied("شناسه شعبه لازم است.")
     else:
         branch=Branch.objects.select_related("business").get(pk=branch_id)
+    if not branch.is_active:
+        raise PermissionDenied("شعبه غیرفعال است؛ شعبه فعال دیگری انتخاب کنید.")
     return assert_branch_access(user,branch,cross_permission=cross_permission)
