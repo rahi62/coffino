@@ -55,7 +55,7 @@ def _module_enabled(user,code):
 ALL_PERMISSION_CODES=[code for rows in PERMISSION_GROUPS.values() for code,_ in rows]
 ROLE_PERMISSIONS={
  'OWNER':{'*'},'MANAGER':{'*'},
- 'CASHIER':{'orders.view','orders.create','orders.complete','catalog.manage','payments.create','payments.split','orders.transfer','cashier.use','printing.use','discount.request','void.request','workforce.clock'},
+ 'CASHIER':{'orders.view','orders.create','orders.complete','payments.create','payments.split','orders.transfer','cashier.use','printing.use','discount.request','void.request','workforce.clock'},
  'WAITER':{'orders.view','orders.create','orders.complete','orders.transfer','tables.use','reservations.manage','workforce.clock'},
  'KITCHEN':{'kitchen.view','kitchen.update','workforce.clock'},
  'INVENTORY':{'inventory.view','inventory.manage','inventory.count','inventory.lot_count','inventory.transfer','production.manage','waste.manage','purchasing.view','purchasing.manage','food_cost.view','workforce.clock'},
