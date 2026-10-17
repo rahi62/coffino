@@ -61,6 +61,36 @@ class QaCheckoutMenuTests(TestCase):
         self.assertEqual(self.branch.orders.filter(pk=first.json()["id"]).count(),1)
         from apps.takeaway.models import TakeawayProfile
         self.assertEqual(TakeawayProfile.objects.get(order_id=first.json()["id"]).ready_notification_method,"NONE")
+    def test_enabled_sms_and_pager_require_real_configuration(self):
+        from unittest.mock import patch
+        from apps.notifications.models import SmsProviderConfig,PagerProviderConfig
+        from apps.takeaway.models import PagerDevice,TakeawayProfile
+        from apps.orders.models import Order
+        c=self.client_as(self.owner)
+        product=Product.objects.create(branch=self.branch,name="Tea with SMS",price=300)
+        BusinessModule.objects.filter(business=self.business,key="NOTIFICATIONS").update(enabled=True)
+        payload={"branch":self.branch.pk,"items":[{"product":product.pk,"quantity":1}],
+                 "order_type":"TAKEAWAY","payments":[{"method":"POS","amount":"300"}],
+                 "customer_phone":"09123456789","ready_notification_method":"SMS"}
+        self.assertEqual(c.post("/api/v1/checkout/",payload,format="json").status_code,400)
+        SmsProviderConfig.objects.create(branch=self.branch,endpoint_url="https://sandbox.invalid/sms",is_active=True)
+        options=c.get(f"/api/v1/checkout-notification-options/?branch={self.branch.pk}")
+        self.assertEqual(options.status_code,200)
+        self.assertTrue(options.json()["sms"])
+        with patch("apps.notifications.services._queue_delivery"):
+            response=c.post("/api/v1/checkout/",payload,format="json")
+        self.assertEqual(response.status_code,201,response.content)
+        self.assertEqual(TakeawayProfile.objects.get(order_id=response.json()["id"]).ready_notification_method,"SMS")
+        self.assertEqual(Order.objects.filter(branch=self.branch).count(),1)
+        payload["ready_notification_method"]="PAGER"
+        self.assertEqual(c.post("/api/v1/checkout/",payload,format="json").status_code,400)
+        PagerProviderConfig.objects.create(branch=self.branch,endpoint_url="https://sandbox.invalid/pager",is_active=True)
+        pager=PagerDevice.objects.create(branch=self.branch,number="7",status="AVAILABLE")
+        payload["pager_id"]=pager.pk
+        with patch("apps.notifications.services._queue_delivery"):
+            response=c.post("/api/v1/checkout/",payload,format="json")
+        self.assertEqual(response.status_code,201,response.content)
+        self.assertEqual(TakeawayProfile.objects.get(order_id=response.json()["id"]).pager_id,pager.pk)
     def test_branchless_owner_must_select_authorized_branch_after_second_branch(self):
         owner=User.objects.create_user(username="qa-unassigned",password="test",business=self.business,role="OWNER")
         second=Branch.objects.create(business=self.business,name="Second")
