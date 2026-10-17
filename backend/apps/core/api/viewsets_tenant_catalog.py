@@ -35,7 +35,7 @@ class CategoryVS(BaseVS):
         return super().destroy(request,*args,**kwargs)
 
 class ProductVS(BaseVS):
-    cafino_read_permission=('orders.create', 'inventory.view', 'inventory.manage')
+    cafino_read_permission=('orders.create', 'catalog.manage', 'inventory.view', 'inventory.manage')
     cafino_write_permission=('catalog.manage','inventory.manage')
     cafino_allow_destroy=True
     queryset=Product.objects.select_related("category","preparation_station").all(); serializer_class=ProductSerializer
