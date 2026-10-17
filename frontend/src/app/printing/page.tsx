@@ -42,6 +42,7 @@ export default function Printing() {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deviceForm, setDeviceForm] = useState<any>(deviceEmpty);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateForm>(newTemplate);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
 
@@ -73,7 +74,7 @@ export default function Printing() {
 
   useEffect(() => { if (!permissionsLoading && (mayManage || mayUse)) void load(); }, [permissionsLoading, mayManage, mayUse]);
 
-  const closeDevice = () => { if (!busy) { setDeviceOpen(false); setDeviceForm(deviceEmpty); } };
+  const closeDevice = () => { if (!busy) { setDeviceOpen(false); setEditingDevice(null); setDeviceForm(deviceEmpty); } };
   const closeTemplate = () => { if (!busy) { setTemplateOpen(false); setEditingTemplate(null); setTemplateForm(newTemplate()); } };
   const saveLocal = () => {
     localStorage.setItem("cafino_receipt_printer", receipt);
@@ -81,21 +82,34 @@ export default function Printing() {
     localStorage.setItem("cafino_receipt_paper_width", String(activeReceiptDevice?.paper_width || 80));
     setMessage("انتخاب چاپگرهای محلی ذخیره شد.");
   };
-  const openDevice = (printer?: any) => {
-    setDeviceForm(printer ? {...deviceEmpty, name: printer.displayName || printer.name, system_name: printer.name} : deviceEmpty);
+  const openDevice = (printer?: Device) => {
+    setEditingDevice(printer || null);
+    setDeviceForm(printer ? {name: printer.name, system_name: printer.system_name, kind: printer.kind, paper_width: String(printer.paper_width), is_active: printer.is_active} : {...deviceEmpty});
     setDeviceOpen(true);
   };
   const saveDevice = async () => {
     if (!mayManage || !selectedBranch || !deviceForm.name.trim()) return;
     setBusy(true);
     try {
-      await api("/printers/", {method: "POST", body: JSON.stringify({...deviceForm, branch: Number(selectedBranch), paper_width: Number(deviceForm.paper_width)})});
-      setMessage("دستگاه چاپ ثبت شد.");
-      closeDevice();
+      const payload = {...deviceForm, paper_width: Number(deviceForm.paper_width)};
+      if (editingDevice) await api(`/printers/${editingDevice.id}/`, {method: "PATCH", body: JSON.stringify(payload)});
+      else await api("/printers/", {method: "POST", body: JSON.stringify({...payload, branch: Number(selectedBranch)})});
+      setMessage(editingDevice ? "اطلاعات چاپگر به‌روزرسانی شد." : "دستگاه چاپ ثبت شد.");
+      setDeviceOpen(false); setEditingDevice(null); setDeviceForm({...deviceEmpty});
       await load();
     } catch (error: any) {
       setMessage(error.message || "ثبت دستگاه چاپ انجام نشد.");
     } finally { setBusy(false); }
+  };
+  const deactivateDevice = async (device: Device) => {
+    if (!mayManage || busy || !window.confirm(`چاپگر «${device.name}» غیرفعال شود؟ سابقه چاپ حذف نمی‌شود.`)) return;
+    setBusy(true);
+    try {
+      await api(`/printers/${device.id}/`, {method: "PATCH", body: JSON.stringify({is_active: false})});
+      setDevices(current => current.map(item => item.id === device.id ? {...item, is_active: false} : item));
+      setMessage("چاپگر غیرفعال شد. برای استفاده دوباره، آن را ویرایش و فعال کنید.");
+    } catch (error: any) {setMessage(error.message || "غیرفعال‌سازی چاپگر انجام نشد.");}
+    finally {setBusy(false);}
   };
   const openTemplate = (template?: Template) => {
     setEditingTemplate(template || null);
@@ -164,7 +178,7 @@ export default function Printing() {
       </div>
       <div className="card p-5">
         <div className="flex items-center justify-between"><h2 className="font-black text-lg">چاپگرهای ثبت‌شدهٔ شعبه</h2><span className="badge">{branchDevices.length.toLocaleString("fa-IR")} دستگاه</span></div>
-        <div className="mt-3 space-y-2">{branchDevices.length ? branchDevices.map((device) => <div className="flex items-center justify-between rounded-xl bg-[#f7f0e8] p-3 text-sm" key={device.id}><div><b>{device.name}</b><span className="mr-2 text-[#8d8178]">{typeLabel[device.kind] || device.kind} · {device.paper_width} میلی‌متر</span></div><span className={device.is_active ? "badge bg-emerald-100 text-emerald-800" : "badge"}>{device.is_active ? "فعال" : "غیرفعال"}</span></div>) : <p className="text-sm text-[#8d8178]">برای این شعبه هنوز چاپگری ثبت نشده است.</p>}</div>
+        <div className="mt-3 space-y-2">{branchDevices.length ? branchDevices.map((device) => <div className="flex items-center justify-between rounded-xl bg-[#f7f0e8] p-3 text-sm" key={device.id}><div><b>{device.name}</b><span className="mr-2 text-[#8d8178]">{typeLabel[device.kind] || device.kind} · {device.paper_width} میلی‌متر</span></div><div className="flex shrink-0 flex-wrap items-center gap-2"><span className={device.is_active ? "badge bg-emerald-100 text-emerald-800" : "badge"}>{device.is_active ? "فعال" : "غیرفعال"}</span>{mayManage && <><button type="button" className="btn min-h-10" disabled={busy} onClick={() => openDevice(device)}>ویرایش</button>{device.is_active && <button type="button" className="btn min-h-10" disabled={busy} onClick={() => void deactivateDevice(device)}>غیرفعال‌کردن</button>}</>}</div></div>) : <p className="text-sm text-[#8d8178]">برای این شعبه هنوز چاپگری ثبت نشده است.</p>}</div>
       </div>
     </section>
 
@@ -176,9 +190,9 @@ export default function Printing() {
 
     <section className="card p-4"><h2 className="font-black text-lg">تاریخچهٔ صف چاپ</h2><div className="mt-3 space-y-2">{jobs.filter((job) => String(job.branch) === selectedBranch).slice(0, 20).map((job) => <div className="flex justify-between border-t border-[#f0e8df] py-2 text-sm" key={job.id}><span>{typeLabel[job.document_type] || job.document_type} · {job.entity_type} {job.entity_id}</span><span className="badge">{label(job.status)}</span></div>)}</div></section>
 
-    <FormDialog open={deviceOpen} onClose={closeDevice} closeDisabled={busy} width="sm" title="ثبت چاپگر" description="نام چاپگر را برای استفاده در این شعبه ثبت کنید.">
-      <div className="space-y-3"><label className="block text-sm font-bold">نام نمایشی<input autoFocus className="btn mt-1 w-full" placeholder="مثلاً فیش صندوق" value={deviceForm.name} onChange={(event) => setDeviceForm({...deviceForm, name: event.target.value})} /></label><label className="block text-sm font-bold">نام سیستمی چاپگر<input className="btn mt-1 w-full" placeholder="نام چاپگر در سیستم‌عامل" value={deviceForm.system_name} onChange={(event) => setDeviceForm({...deviceForm, system_name: event.target.value})} /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-bold">کاربرد<select className="btn mt-1 w-full" value={deviceForm.kind} onChange={(event) => setDeviceForm({...deviceForm, kind: event.target.value})}><option value="RECEIPT">رسید مشتری</option><option value="KITCHEN">آشپزخانه</option><option value="BAR">بار</option></select></label><label className="block text-sm font-bold">عرض کاغذ<select className="btn mt-1 w-full" value={deviceForm.paper_width} onChange={(event) => setDeviceForm({...deviceForm, paper_width: event.target.value})}><option value="80">۸۰ میلی‌متر</option><option value="58">۵۸ میلی‌متر</option></select></label></div></div>
-      <footer className="mt-5 flex justify-end gap-2 border-t border-[#eadfd3] pt-4"><button className="btn" disabled={busy} onClick={closeDevice}>انصراف</button><button className="btn btn-primary" disabled={busy || !deviceForm.name.trim()} onClick={() => void saveDevice()}>{busy ? "در حال ثبت…" : "ثبت چاپگر"}</button></footer>
+    <FormDialog open={deviceOpen} onClose={closeDevice} closeDisabled={busy} width="sm" title={editingDevice ? "ویرایش چاپگر" : "ثبت چاپگر"} description="تنظیمات چاپگر ثبت‌شده برای شعبه را مدیریت کنید.">
+      <div className="space-y-3"><label className="block text-sm font-bold">نام نمایشی<input autoFocus className="btn mt-1 w-full" placeholder="مثلاً فیش صندوق" value={deviceForm.name} onChange={(event) => setDeviceForm({...deviceForm, name: event.target.value})} /></label><label className="block text-sm font-bold">نام سیستمی چاپگر<input className="btn mt-1 w-full" placeholder="نام چاپگر در سیستم‌عامل" value={deviceForm.system_name} onChange={(event) => setDeviceForm({...deviceForm, system_name: event.target.value})} /></label><label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={!!deviceForm.is_active} onChange={event => setDeviceForm({...deviceForm, is_active: event.target.checked})}/> چاپگر فعال باشد</label><div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-bold">کاربرد<select className="btn mt-1 w-full" value={deviceForm.kind} onChange={(event) => setDeviceForm({...deviceForm, kind: event.target.value})}><option value="RECEIPT">رسید مشتری</option><option value="KITCHEN">آشپزخانه</option><option value="BAR">بار</option></select></label><label className="block text-sm font-bold">عرض کاغذ<select className="btn mt-1 w-full" value={deviceForm.paper_width} onChange={(event) => setDeviceForm({...deviceForm, paper_width: event.target.value})}><option value="80">۸۰ میلی‌متر</option><option value="58">۵۸ میلی‌متر</option></select></label></div></div>
+      <footer className="mt-5 flex justify-end gap-2 border-t border-[#eadfd3] pt-4"><button className="btn" disabled={busy} onClick={closeDevice}>انصراف</button><button className="btn btn-primary" disabled={busy || !deviceForm.name.trim()} onClick={() => void saveDevice()}>{busy ? "در حال ذخیره…" : editingDevice ? "ذخیره تغییرات" : "ثبت چاپگر"}</button></footer>
     </FormDialog>
 
     <FormDialog open={templateOpen} onClose={closeTemplate} closeDisabled={busy} width="lg" title={editingTemplate ? "ویرایش قالب چاپ" : "ساخت قالب چاپ"} description="قالب پیش‌فرض هر نوع فیش، هنگام چاپ سفارش خودکار استفاده می‌شود.">
