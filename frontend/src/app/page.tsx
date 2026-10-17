@@ -35,18 +35,28 @@ export default function Dashboard(){
       setPermissions(perms);
       const jobs:Promise<unknown>[]=[];
       let selected=selectedBranch;
+      let fallbackDashboard:DashboardData|null=null;
       try{
         const all=await api<Array<{id:number;name:string;is_active?:boolean}>>("/branches/");
         const active=all.filter(x=>x.is_active!==false);
         setBranches(active);
         const saved=Number(localStorage.getItem("cafino_settings_branch")||0);
         if(!active.some(x=>String(x.id)===selected))selected=active.find(x=>x.id===saved)?.id.toString()||(active.length===1?String(active[0].id):"");
+        if(!selected&&active.length>1&&(perms["orders.view"]||perms["reports.view"])){
+          try{
+            const candidate=await api<DashboardData & {branch:number}>("/dashboard/");
+            if(active.some(x=>x.id===candidate.branch)){
+              selected=String(candidate.branch);
+              fallbackDashboard=candidate;
+            }
+          }catch{/* Cross-branch users must select explicitly. */}
+        }
         setSelectedBranch(selected);
         setBranchError(!selected?(active.length?"شعبه را برای مشاهده آمار انتخاب کنید.":"شعبه فعالی وجود ندارد؛ ابتدا شعبه بسازید."):"");
       }catch(e){selected="";setSelectedBranch("");setBranches([]);setBranchError("فهرست شعب در دسترس نیست.");}
       if(!selected)setData(null);
       if(selected&&(perms["orders.view"]||perms["reports.view"])){
-        jobs.push(api<DashboardData>(`/dashboard/?branch=${encodeURIComponent(selected)}`).then(x=>{setData(x);setUpdatedAt(new Date())}).catch(e=>{
+        jobs.push((fallbackDashboard?Promise.resolve(fallbackDashboard):api<DashboardData>(`/dashboard/?branch=${encodeURIComponent(selected)}`)).then(x=>{setData(x);setUpdatedAt(new Date())}).catch(e=>{
           setData(null);setDashboardError(e instanceof Error?e.message:"دریافت آمار ممکن نشد.");
         }));
       }else{setData(null);}
