@@ -13,7 +13,7 @@ const nav=[
  ["/settings/branches","شعب و صندوق‌ها",Store,"branches.manage"],
  ["/settings/dining","سالن و تعریف میز",Armchair,"settings.manage"],
  ["/settings/sales","فروش و مالی",ReceiptText,"settings.manage"],
- ["/settings/catalog","منو و موجودی",Boxes,"inventory.manage"],
+ ["/settings/catalog","منو و موجودی",Boxes,"catalog.manage"],
  ["/settings/online","سفارش آنلاین و ارسال",Globe2,"online_ordering.manage"],
  ["/settings/notifications","اطلاع‌رسانی",MessageSquare,"notifications.manage"],
  ["/settings/team","کاربران و دسترسی‌ها",UsersRound,"permissions.manage"],
