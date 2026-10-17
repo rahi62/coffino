@@ -20,6 +20,7 @@ const worker=read("backend/railway-worker.toml");assert.ok(worker.includes("cele
 const beat=read("backend/railway-beat.toml");assert.ok(beat.includes("celery -A config beat"));
 const front=read("frontend/railway.toml");assert.ok(front.includes('healthcheckPath = "/login"'));
 const docker=read("backend/Dockerfile");
+assert.ok(/apt-get install[^\n]*curl/.test(docker),"Coolify HTTP readiness requires curl inside backend runtime image");
 const startup=read("backend/start-web.sh");
 assert.ok(docker.includes('CMD ["/bin/sh", "/app/start-web.sh"]'),"Backend Dockerfile must launch the production startup script");
 assert.ok(startup.includes("${PORT:-8000}"),"Backend startup must bind Railway/Coolify PORT");
