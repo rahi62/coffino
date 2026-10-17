@@ -38,20 +38,27 @@ export default function Products() {
 
   const load = async () => {
     setLoading(true);
-    try {
-      const [nextProducts, nextCategories, nextBranches, nextInventory, nextStations] = await Promise.all([
-        api<Product[]>("/products/"), api<Category[]>("/categories/"), api<Branch[]>("/branches/"), api<InventoryItem[]>("/inventory-items/"), api<Station[]>("/stations/"),
-      ]);
-      setProducts(nextProducts); setCategories(nextCategories); setBranches(nextBranches); setInventory(nextInventory); setStations(nextStations);
-      setSelectedBranchId(current => {
-        if (current && nextBranches.some(branch => branch.id === current)) return current;
-        const stored = Number(localStorage.getItem(branchStorageKey) || 0);
-        return nextBranches.some(branch => branch.id === stored) ? stored : nextBranches[0]?.id || null;
+    const [productsResult,categoriesResult,branchesResult,inventoryResult,stationsResult]=await Promise.allSettled([
+      api<Product[]>("/products/"),api<Category[]>("/categories/"),api<Branch[]>("/branches/"),
+      api<InventoryItem[]>("/inventory-items/"),api<Station[]>("/stations/"),
+    ]);
+    if(productsResult.status==="fulfilled")setProducts(productsResult.value);
+    if(categoriesResult.status==="fulfilled")setCategories(categoriesResult.value);
+    if(branchesResult.status==="fulfilled"){
+      const nextBranches=branchesResult.value;
+      setBranches(nextBranches);
+      setSelectedBranchId(current=>{
+        if(current&&nextBranches.some(branch=>branch.id===current))return current;
+        const stored=Number(localStorage.getItem(branchStorageKey)||0);
+        return nextBranches.some(branch=>branch.id===stored)?stored:nextBranches[0]?.id||null;
       });
-    } catch (error:any) { setMessage(error.message || "دریافت اطلاعات محصولات انجام نشد."); }
-    finally { setLoading(false); }
+    }
+    if(inventoryResult.status==="fulfilled")setInventory(inventoryResult.value);
+    if(stationsResult.status==="fulfilled")setStations(stationsResult.value);
+    const failures=[productsResult,categoriesResult,branchesResult,inventoryResult,stationsResult].filter(result=>result.status==="rejected");
+    if(failures.length)setMessage("بخشی از اطلاعات دریافت نشد. دسته‌بندی‌های دریافت‌شده و سایر اطلاعات موفق همچنان نمایش داده می‌شوند.");
+    setLoading(false);
   };
-
   useEffect(() => { void load(); }, []);
   useEffect(() => { if (selectedBranchId) localStorage.setItem(branchStorageKey, String(selectedBranchId)); }, [selectedBranchId]);
 
@@ -85,20 +92,25 @@ export default function Products() {
 
   const saveCategory = async (event:FormEvent) => {
     event.preventDefault();
-    if (!selectedBranchId || !categoryName.trim()) return;
-    setSavingCategory(true); setMessage("");
-    try {
-      if (editingCategory) {
-        await api<Category>(`/categories/${editingCategory.id}/`, {method:"PATCH", body:JSON.stringify({name:categoryName.trim()})});
-        setMessage("دسته‌بندی ویرایش شد.");
-      } else {
-        const category = await api<Category>("/categories/", {method:"POST", body:JSON.stringify({branch:selectedBranchId, name:categoryName.trim(), sort_order:branchCategories.length, is_active:true})});
-        setProductForm(current => ({...current, category:String(category.id)}));
-        setMessage("دسته‌بندی جدید ایجاد و برای محصول انتخاب شد.");
+    if(!selectedBranchId||!categoryName.trim()||savingCategory)return;
+    const targetBranch=selectedBranchId;
+    setSavingCategory(true);setMessage("");
+    try{
+      let saved:Category;
+      if(editingCategory){
+        saved=await api<Category>(`/categories/${editingCategory.id}/`,{method:"PATCH",body:JSON.stringify({name:categoryName.trim()})});
+        setCategories(current=>current.map(category=>category.id===saved.id?saved:category));
+        setMessage(`دسته‌بندی «${saved.name}» ویرایش شد (شناسه ${saved.id.toLocaleString("fa-IR")}).`);
+      }else{
+        saved=await api<Category>("/categories/",{method:"POST",body:JSON.stringify({branch:targetBranch,name:categoryName.trim(),sort_order:branchCategories.length,is_active:true})});
+        setCategories(current=>current.some(category=>category.id===saved.id)?current.map(category=>category.id===saved.id?saved:category):[...current,saved]);
+        setProductForm(current=>({...current,category:String(saved.id)}));
+        setMessage(`دسته‌بندی «${saved.name}» ایجاد شد (شناسه ${saved.id.toLocaleString("fa-IR")}).`);
       }
-      closeCategoryDialog(); await load();
-    } catch (error:any) { setMessage(error.message || "ذخیرهٔ دسته‌بندی انجام نشد."); }
-    finally { setSavingCategory(false); }
+      closeCategoryDialog();
+      // Saving succeeded. Do not report a save failure if unrelated reads fail.
+    }catch(error:any){setMessage(error.message||"ذخیره دسته‌بندی انجام نشد.");}
+    finally{setSavingCategory(false);}
   };
   const setCategoryActive = async (category:Category) => {
     try { await api<Category>(`/categories/${category.id}/`, {method:"PATCH", body:JSON.stringify({is_active:!category.is_active})}); setMessage(`دسته‌بندی ${category.is_active ? "غیرفعال" : "فعال"} شد.`); await load(); }
@@ -148,7 +160,7 @@ export default function Products() {
     <FormDialog open={productDialog} onClose={closeProductDialog} closeDisabled={savingProduct} width="lg" title={editingProduct ? `ویرایش «${editingProduct.name}»` : "افزودن محصول"} description="محصول آماده‌سازی‌شونده را به ایستگاه وصل کنید تا در آشپزخانه نمایش داده شود.">
       <form className="space-y-4" onSubmit={saveProduct}><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold">نام محصول<input autoFocus className="btn mt-1 w-full" placeholder="مثلاً لاته" value={productForm.name} onChange={event => setProductForm({...productForm, name:event.target.value})}/></label><label className="text-sm font-bold">قیمت فروش (ریال)<input className="btn mt-1 w-full" inputMode="numeric" placeholder="مثلاً ۲۵۰٬۰۰۰" value={productForm.price} onChange={event => setProductForm({...productForm, price:event.target.value})}/></label><label className="text-sm font-bold">دسته‌بندی<select className="btn mt-1 w-full" value={productForm.category} onChange={event => setProductForm({...productForm, category:event.target.value})}><option value="">بدون دسته‌بندی</option>{branchCategories.filter(category => category.is_active || category.id === Number(productForm.category)).map(category => <option key={category.id} value={category.id}>{category.name}{category.is_active ? "" : " (غیرفعال)"}</option>)}</select></label><label className="text-sm font-bold">نوع محصول<select className="btn mt-1 w-full" value={productForm.product_type} onChange={event => setProductForm({...productForm, product_type:event.target.value})}>{Object.entries(productTypeLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><label className="block text-sm font-bold">اتصال به قلم انبار<select className="btn mt-1 w-full" value={productForm.stock_item} onChange={event => setProductForm({...productForm, stock_item:event.target.value})}><option value="">بدون اتصال به قلم انبار</option>{branchInventory.map(item => <option key={item.id} value={item.id}>{item.name} — موجودی {Number(item.current_stock).toLocaleString("fa-IR")}</option>)}</select></label><div className="rounded-2xl border border-[#eadfd3] bg-[#fdf9f4] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><label className="min-w-56 flex-1 text-sm font-bold">ایستگاه آماده‌سازی<select className="btn mt-1 w-full" value={productForm.preparation_station} onChange={event => setProductForm({...productForm, preparation_station:event.target.value})}><option value="">بدون ارسال به آشپزخانه</option>{branchStations.filter(station => station.is_active || station.id === Number(productForm.preparation_station)).map(station => <option key={station.id} value={station.id}>{station.name}{station.is_active ? "" : " (غیرفعال)"}</option>)}</select></label><button type="button" className="btn mt-5" onClick={() => setStationDialog(true)}>ایجاد ایستگاه</button></div><p className="mt-2 text-xs text-[#8d8178]">این اتصال مستقل از وضعیت پرداخت است و سفارش را برای آماده‌سازی ارسال می‌کند.</p></div><footer className="flex flex-wrap justify-end gap-2 border-t border-[#eadfd3] pt-4"><button type="button" className="btn" onClick={closeProductDialog} disabled={savingProduct}>انصراف</button><button className="btn btn-primary" disabled={savingProduct}>{savingProduct ? "در حال ذخیره…" : editingProduct ? "ذخیرهٔ تغییرات" : "ثبت محصول"}</button></footer></form>
     </FormDialog>
-    <FormDialog open={categoryDialog} onClose={closeCategoryDialog} closeDisabled={savingCategory} title={editingCategory ? `ویرایش دستهٔ «${editingCategory.name}»` : "مدیریت دسته‌بندی‌ها"} description="دسته‌ها فقط در شعبهٔ فعال قابل استفاده‌اند.">
+    <FormDialog open={categoryDialog} onClose={closeCategoryDialog} closeDisabled={savingCategory} title={editingCategory ? `ویرایش دستهٔ «${editingCategory.name}»` : "مدیریت دسته‌بندی‌ها"} description={`دسته‌ها فقط در شعبه «${selectedBranch?.name||"انتخاب‌نشده"}» قابل استفاده‌اند.`}>
       <form className="space-y-4" onSubmit={saveCategory}><label className="block text-sm font-bold">نام دسته‌بندی<input autoFocus className="btn mt-1 w-full" placeholder="مثلاً نوشیدنی گرم" value={categoryName} onChange={event => setCategoryName(event.target.value)} maxLength={120}/></label><footer className="flex justify-end gap-2"><button type="button" className="btn" onClick={closeCategoryDialog} disabled={savingCategory}>انصراف</button><button className="btn btn-primary" disabled={savingCategory || !categoryName.trim()}>{savingCategory ? "در حال ذخیره…" : editingCategory ? "ذخیرهٔ تغییرات" : "ثبت دسته‌بندی"}</button></footer></form><div className="mt-5 border-t border-[#eadfd3] pt-4"><h3 className="font-black">دسته‌های ثبت‌شده</h3><div className="mt-3 space-y-2">{branchCategories.length ? branchCategories.map(category => <div key={category.id} className="flex items-center justify-between gap-2 rounded-xl border border-[#eadfd3] p-3"><span className={category.is_active ? "font-bold" : "text-[#8d8178] line-through"}>{category.name}</span><div className="flex flex-wrap gap-1"><button type="button" className="btn text-xs" onClick={() => openCategoryEdit(category)}>ویرایش</button><button type="button" className="btn text-xs" onClick={() => void setCategoryActive(category)}>{category.is_active ? "غیرفعال‌کردن" : "فعال‌کردن"}</button><button type="button" className="btn text-xs text-red-700" onClick={() => void deleteCategory(category)}>حذف</button></div></div>) : <p className="text-sm text-[#8d8178]">هنوز دسته‌بندی‌ای ثبت نشده است.</p>}</div></div>
     </FormDialog>
     <FormDialog open={stationDialog} onClose={() => { setStationDialog(false); setStationName(""); }} closeDisabled={savingStation} width="sm" title="ایجاد ایستگاه آماده‌سازی" description="مثلاً بار گرم، آشپزخانه یا دسر."><form className="space-y-4" onSubmit={createStation}><label className="block text-sm font-bold">نام ایستگاه<input autoFocus className="btn mt-1 w-full" placeholder="مثلاً بار گرم" value={stationName} onChange={event => setStationName(event.target.value)} maxLength={120}/></label><footer className="flex justify-end gap-2"><button type="button" className="btn" onClick={() => setStationDialog(false)} disabled={savingStation}>انصراف</button><button className="btn btn-primary" disabled={savingStation || !stationName.trim()}>{savingStation ? "در حال ایجاد…" : "ایجاد و انتخاب"}</button></footer></form></FormDialog>
