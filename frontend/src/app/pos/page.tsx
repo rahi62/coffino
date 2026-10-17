@@ -19,7 +19,7 @@ export default function POS(){
   const [customerName,setCustomerName]=useState(""),[customerPhone,setCustomerPhone]=useState(""),[customerQuery,setCustomerQuery]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
   const [customerDialog,setCustomerDialog]=useState(false),[checkoutDialog,setCheckoutDialog]=useState(false),[preparingCheckout,setPreparingCheckout]=useState(false);
   const [discountCode,setDiscountCode]=useState(""),[manualPercent,setManualPercent]=useState(""),[manualAmount,setManualAmount]=useState(""),[managerPin,setManagerPin]=useState("");
-  const [preview,setPreview]=useState<any>(null),[deferPayment,setDeferPayment]=useState(false),[mixed,setMixed]=useState(false),[singleMethod,setSingleMethod]=useState(PAYMENT_METHODS.POS),[singleGiftCode,setSingleGiftCode]=useState(""),[singleBankAccount,setSingleBankAccount]=useState(""),[tenders,setTenders]=useState<Tender[]>([{method:PAYMENT_METHODS.POS,amount:"",payer_label:"نفر ۱"}]),[splitGuests,setSplitGuests]=useState("2");
+  const [preview,setPreview]=useState<any>(null),[deferPayment,setDeferPayment]=useState(false),[mixed,setMixed]=useState(false),[singleMethod,setSingleMethod]=useState<string>(PAYMENT_METHODS.POS),[singleGiftCode,setSingleGiftCode]=useState(""),[singleBankAccount,setSingleBankAccount]=useState(""),[tenders,setTenders]=useState<Tender[]>([{method:PAYMENT_METHODS.POS,amount:"",payer_label:"نفر ۱"}]),[splitGuests,setSplitGuests]=useState("2");
   const [notificationCaps,setNotificationCaps]=useState({sms:false,pager:false});
   const [selectedBranchId,setSelectedBranchId]=useState("");
   const checkoutKey=useRef("");
