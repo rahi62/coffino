@@ -16,10 +16,8 @@ function verifySession(token:string){
  if(verification&&verifyingToken===token)return verification;
  verifyingToken=token;
  const task=api("/me/").then(()=>{if(verifyingToken===token)verifiedToken=token;});
- verification=task.finally(()=>{if(verification===task)verification=null;});
- // Clear the promise on either resolution or rejection.
- const current=verification;
- void current.finally(()=>{if(verification===current){verification=null;verifyingToken=null;}}).catch(()=>{});
+ const current=task.finally(()=>{if(verification===current){verification=null;verifyingToken=null;}});
+ verification=current;
  return current;
 }
 export default function AuthGuard({children}:{children:React.ReactNode}){
