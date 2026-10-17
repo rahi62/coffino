@@ -19,7 +19,8 @@ export default function POS(){
   const [customerDialog,setCustomerDialog]=useState(false),[checkoutDialog,setCheckoutDialog]=useState(false),[preparingCheckout,setPreparingCheckout]=useState(false);
   const [discountCode,setDiscountCode]=useState(""),[manualPercent,setManualPercent]=useState(""),[manualAmount,setManualAmount]=useState(""),[managerPin,setManagerPin]=useState("");
   const [preview,setPreview]=useState<any>(null),[deferPayment,setDeferPayment]=useState(false),[mixed,setMixed]=useState(false),[singleMethod,setSingleMethod]=useState("POS"),[singleGiftCode,setSingleGiftCode]=useState(""),[singleBankAccount,setSingleBankAccount]=useState(""),[tenders,setTenders]=useState<Tender[]>([{method:"POS",amount:"",payer_label:"نفر ۱"}]),[splitGuests,setSplitGuests]=useState("2");
-  const [notificationsAllowed,setNotificationsAllowed]=useState(false);
+  const [notificationCaps,setNotificationCaps]=useState({sms:false,pager:false});
+  const [selectedBranchId,setSelectedBranchId]=useState("");
   const checkoutKey=useRef("");
   const [cartOpen,setCartOpen]=useState(false);
   const [initialLoading,setInitialLoading]=useState(true);
@@ -36,6 +37,9 @@ export default function POS(){
       api<any[]>("/customers/")
     ]).then(([p,c,t,b,z,pg,cu])=>{
       setProducts(p);setCategories(c);setTables(t);setBranches(b);
+      const stored=Number(localStorage.getItem("cafino_settings_branch")||0);
+      const chosen=b.find(x=>x.id===stored&&x.is_active!==false)||(b.filter(x=>x.is_active!==false).length===1?b.find(x=>x.is_active!==false):null);
+      setSelectedBranchId(chosen?String(chosen.id):"");
       setZones(z);setPagers(pg);setCustomers(cu.filter(customer=>!customer.is_walk_in));
       setBankAccounts([]);
       if(z[0]&&!deliveryZone)setDeliveryZone(z[0].code);
@@ -44,8 +48,8 @@ export default function POS(){
     }).finally(()=>setInitialLoading(false));
   }
   useEffect(load,[]);
-  useEffect(()=>{api<{permissions:Record<string,boolean>}>("/permissions/me/").then(result=>setNotificationsAllowed(result.permissions?.["notifications.manage"]===true)).catch(()=>setNotificationsAllowed(false))},[]);
-  useEffect(()=>{if(readyNotificationMethod==="SMS"&&!notificationsAllowed)setReadyNotificationMethod("NONE");if(readyNotificationMethod==="PAGER"&&!pagers.some(p=>p.status==="AVAILABLE"))setReadyNotificationMethod("NONE")},[readyNotificationMethod,notificationsAllowed,pagers]);
+  useEffect(()=>{if(!selectedBranchId){setNotificationCaps({sms:false,pager:false});return;}api<{sms:boolean;pager:boolean}>(`/checkout-notification-options/?branch=${selectedBranchId}`).then(setNotificationCaps).catch(()=>setNotificationCaps({sms:false,pager:false}))},[selectedBranchId]);
+  useEffect(()=>{if(readyNotificationMethod==="SMS"&&!notificationCaps.sms)setReadyNotificationMethod("NONE");if(readyNotificationMethod==="PAGER"&&!notificationCaps.pager || !pagers.some(p=>p.status==="AVAILABLE"))setReadyNotificationMethod("NONE")},[readyNotificationMethod,notificationCaps.sms,notificationCaps.pager,pagers]);
   const shown=category?products.filter(x=>x.category===category):products;
   const cartCount=Object.values(cart).reduce((a,b)=>a+Number(b||0),0);
   const subtotal=useMemo(()=>products.reduce((sum,p)=>sum+(cart[p.id]||0)*Number(p.price),0),[cart,products]);
@@ -78,6 +82,7 @@ export default function POS(){
   }
 
   async function checkout(){
+    if(!selectedBranchId){setMessage("ابتدا شعبه سفارش را انتخاب کنید.");return}
     if(orderType==="DINE_IN"&&!table){setMessage("برای سفارش داخل سالن، میز را انتخاب کنید.");return}
     if(orderType==="TAKEAWAY"&&readyNotificationMethod==="SMS"&&!customerPhone.trim()){setMessage("برای اطلاع‌رسانی پیامکی، شماره همراه مشتری را وارد کنید.");return}
     if(orderType==="TAKEAWAY"&&readyNotificationMethod==="PAGER"&&!pagerId){setMessage("برای فراخوانی پیجر، یک پیجر آزاد را انتخاب کنید.");return}
@@ -91,7 +96,8 @@ export default function POS(){
       }else if(!deferPayment){
         payments=[{method:singleMethod,amount:String(Number(d.grand_total)),tendered_amount:String(Number(d.grand_total)),payer_label:"",gift_card_code:singleMethod==="GIFT_CARD"?singleGiftCode:"",bank_account:singleMethod==="POS"&&singleBankAccount?Number(singleBankAccount):null}];
       }
-      const br=branches[0];
+      const br=branches.find(x=>String(x.id)===selectedBranchId);
+      if(!br)throw new Error("شعبه معتبر برای ثبت سفارش انتخاب کنید.");
       const manual=(Number(manualAmount||0)>0||Number(manualPercent||0)>0)?{amount:Number(manualAmount||0),percent:Number(manualPercent||0),reason:"تخفیف دستی صندوق"}:null;
       if(!checkoutKey.current)checkoutKey.current=(globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`);
       const order=await api<any>("/checkout/",{method:"POST",headers:{...(token?{"X-Cafino-Override":token}:{}),"Idempotency-Key":checkoutKey.current},body:JSON.stringify({
@@ -122,6 +128,7 @@ export default function POS(){
   if(initialLoading)return <div role="status" className="card p-5">در حال دریافت محصولات و اطلاعات فروش…</div>;
   if(initialError)return <section role="alert" className="card border-red-200 p-5"><h1 className="text-xl font-black">فروش در دسترس نیست</h1><p className="mt-2 text-sm text-red-800">{initialError}</p><button type="button" className="btn mt-4 min-h-11" onClick={load}>تلاش دوباره</button></section>;
   return <div className="pb-24 md:flex md:h-[calc(100dvh-2.5rem)] md:flex-col md:pb-0 xl:h-[calc(100dvh-3rem)]">
+    <label className="mb-3 block text-sm font-bold">شعبه فروش <select className="btn mr-2" value={selectedBranchId} onChange={e=>{setSelectedBranchId(e.target.value);localStorage.setItem("cafino_settings_branch",e.target.value);setCart({});setTable("");setPagerId("");}}><option value="">انتخاب شعبه</option>{branches.filter(x=>x.is_active!==false).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <div className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-3 md:mb-3">
       <div><h1 className="text-2xl font-black md:text-3xl">فروش جدید</h1><p className="hidden text-[#8d8178] sm:block">پیش‌نمایش قطعی سامانه ← مالیات و سرویس ← پرداخت ترکیبی ← آماده‌سازی</p></div>
       <div className="flex flex-wrap gap-2"><select className="btn" value={orderType} onChange={e=>{setOrderType(e.target.value);setTable("");invalidate()}}><option value="TAKEAWAY">بیرون‌بر</option><option value="DINE_IN">داخل سالن</option><option value="PICKUP">تحویل حضوری</option><option value="DELIVERY">ارسال</option></select>
@@ -133,7 +140,7 @@ export default function POS(){
       <div className="grid grid-cols-2 content-start gap-3 md:min-h-0 md:overflow-y-auto md:pb-1 min-[900px]:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">{shown.map(p=><button key={p.id} className="card relative min-h-[104px] p-3 text-right transition active:scale-[.98] md:p-4 md:hover:-translate-y-1" onClick={()=>inc(p.id)}>{cart[p.id]>0&&<span className="absolute left-2 top-2 grid min-w-7 place-items-center rounded-full bg-[#b9792d] px-1.5 text-sm font-black text-white">{Number(cart[p.id]).toLocaleString("fa-IR")}</span>}<div className="font-bold text-base md:text-lg">{p.name}</div><div className="mt-1 text-xs text-[#8d8178]">{p.category_name||"بدون دسته"}</div><div className="mt-3 font-bold text-[#b9792d] md:mt-4">{Number(p.price).toLocaleString("fa-IR")} ریال</div></button>)}</div>
       {cartOpen&&<button type="button" aria-label="بستن سبد" className="fixed inset-0 z-30 h-full w-full cursor-default bg-black/45 md:hidden" onClick={()=>setCartOpen(false)}/>}
       <div className={`card p-4 ${cartOpen?"fixed inset-x-0 bottom-0 z-40 max-h-[90vh] overflow-y-auto !rounded-b-none !rounded-t-3xl shadow-2xl":"hidden"} md:static md:z-auto md:block md:max-h-none md:min-h-0 md:overflow-y-auto md:!rounded-[18px] md:shadow-none`} role={cartOpen?"dialog":undefined} aria-label="سبد سفارش">
-        <div className="mb-3 flex items-start justify-between gap-2"><div><h2 className="text-xl font-black">سفارش جاری</h2><p className="mt-1 text-xs text-[#8d8178]">{customerName||customerPhone?`${customerName||"مشتری"}${customerPhone?` · ${customerPhone}`:""}`:"مشتری و اطلاعات تحویل هنوز ثبت نشده است."}</p></div><div className="flex gap-2"><button type="button" className="btn text-sm" onClick={()=>setCustomerDialog(true)}>مشتری و تحویل</button><button type="button" aria-label="بستن سبد" className="btn text-sm md:hidden" onClick={()=>setCartOpen(false)}>✕</button></div></div>{orderType==="TAKEAWAY"&&<div className="mb-3 rounded-xl bg-[#eee6dc] p-3"><div className="mb-2 text-sm font-bold">اطلاع‌رسانی آماده‌شدن سفارش</div><div className="grid gap-2 sm:grid-cols-2"><select className="btn w-full" value={readyNotificationMethod} onChange={e=>{setReadyNotificationMethod(e.target.value);setPagerId("")}}><option value="SMS" disabled={!notificationsAllowed}>پیامک به مشتری</option><option value="PAGER" disabled={!pagers.some(p=>p.status==="AVAILABLE")}>فراخوانی پیجر</option><option value="NONE">بدون اعلان</option></select>{readyNotificationMethod==="PAGER"&&<select className="btn w-full" value={pagerId} onChange={e=>setPagerId(e.target.value)}><option value="">انتخاب پیجر آزاد…</option>{pagers.filter(pager=>pager.status==="AVAILABLE").map(pager=><option key={pager.id} value={pager.id}>پیجر {pager.number}</option>)}</select>}</div><p className="mt-2 text-xs text-[#8d8178]">پس از آماده‌شدن همهٔ آیتم‌ها، پیامک یا فرمان فراخوانی پیجر در پس‌زمینه ارسال و وضعیت آن ثبت می‌شود.</p></div>}
+        <div className="mb-3 flex items-start justify-between gap-2"><div><h2 className="text-xl font-black">سفارش جاری</h2><p className="mt-1 text-xs text-[#8d8178]">{customerName||customerPhone?`${customerName||"مشتری"}${customerPhone?` · ${customerPhone}`:""}`:"مشتری و اطلاعات تحویل هنوز ثبت نشده است."}</p></div><div className="flex gap-2"><button type="button" className="btn text-sm" onClick={()=>setCustomerDialog(true)}>مشتری و تحویل</button><button type="button" aria-label="بستن سبد" className="btn text-sm md:hidden" onClick={()=>setCartOpen(false)}>✕</button></div></div>{orderType==="TAKEAWAY"&&<div className="mb-3 rounded-xl bg-[#eee6dc] p-3"><div className="mb-2 text-sm font-bold">اطلاع‌رسانی آماده‌شدن سفارش</div><div className="grid gap-2 sm:grid-cols-2"><select className="btn w-full" value={readyNotificationMethod} onChange={e=>{setReadyNotificationMethod(e.target.value);setPagerId("")}}><option value="SMS" disabled={!notificationCaps.sms}>پیامک به مشتری</option><option value="PAGER" disabled={!notificationCaps.pager || !pagers.some(p=>p.status==="AVAILABLE")}>فراخوانی پیجر</option><option value="NONE">بدون اعلان</option></select>{readyNotificationMethod==="PAGER"&&<select className="btn w-full" value={pagerId} onChange={e=>setPagerId(e.target.value)}><option value="">انتخاب پیجر آزاد…</option>{pagers.filter(pager=>pager.status==="AVAILABLE").map(pager=><option key={pager.id} value={pager.id}>پیجر {pager.number}</option>)}</select>}</div><p className="mt-2 text-xs text-[#8d8178]">پس از آماده‌شدن همهٔ آیتم‌ها، پیامک یا فرمان فراخوانی پیجر در پس‌زمینه ارسال و وضعیت آن ثبت می‌شود.</p></div>}
         <div className="min-h-44 space-y-2 md:max-h-[28vh] md:overflow-auto">{products.filter(p=>cart[p.id]).map(p=><div key={p.id} className="flex justify-between items-center border-b pb-2"><div><b>{p.name}</b><div className="text-xs text-[#8d8178]">{(Number(p.price)*(cart[p.id]||0)).toLocaleString("fa-IR")}</div></div><div className="flex items-center gap-2"><button className="btn" onClick={()=>dec(p.id)}>−</button><b>{cart[p.id]}</b><button className="btn" onClick={()=>inc(p.id)}>+</button></div></div>)}</div>
         <div className="border-t pt-3 mt-3 space-y-2"><input className="border rounded-xl p-2 w-full" placeholder="کد تخفیف" value={discountCode} onChange={e=>{setDiscountCode(e.target.value);invalidate()}}/><div className="grid grid-cols-2 gap-2"><input className="border rounded-xl p-2" placeholder="تخفیف %" value={manualPercent} onChange={e=>{setManualPercent(e.target.value);invalidate()}}/><input className="border rounded-xl p-2" placeholder="تخفیف مبلغ" value={manualAmount} onChange={e=>{setManualAmount(e.target.value);invalidate()}}/></div>{(manualPreview>0||discountCode)&&<input type="password" inputMode="numeric" className="border rounded-xl p-2 w-full" placeholder="رمز مدیر در صورت نیاز" value={managerPin} onChange={e=>setManagerPin(e.target.value)}/>}</div>
         <button className="btn w-full mt-3" onClick={()=>calculatePreview().catch(e=>setMessage(e.message))}>محاسبه مبلغ نهایی</button>
