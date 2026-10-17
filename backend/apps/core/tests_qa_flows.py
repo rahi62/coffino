@@ -20,7 +20,7 @@ class QaCheckoutMenuTests(TestCase):
     def client_as(self,user):
         c=APIClient();c.force_authenticate(user=user);return c
     def test_catalog_write_independent_of_inventory(self):
-        for user in (self.owner,self.manager,self.cashier):
+        for user in (self.owner,self.manager):
             self.assertTrue(has_perm(user,"catalog.manage"))
             self.assertFalse(has_perm(user,"inventory.manage"))
             c=self.client_as(user)
@@ -32,6 +32,8 @@ class QaCheckoutMenuTests(TestCase):
             self.assertIn(category.json()["id"],[row["id"] for row in c.get("/api/v1/categories/").json()])
             self.assertEqual(c.patch(f'/api/v1/categories/{category.json()["id"]}/',{"name":"Updated"},format="json").status_code,200)
     def test_override_and_tenant_cannot_write(self):
+        self.assertFalse(has_perm(self.cashier,"catalog.manage"))
+        self.assertEqual(self.client_as(self.cashier).post("/api/v1/categories/",{"branch":self.branch.pk,"name":"Blocked"},format="json").status_code,403)
         self.cashier.permission_overrides={"catalog.manage":False}
         self.cashier.save(update_fields=["permission_overrides"])
         c=self.client_as(self.cashier)
